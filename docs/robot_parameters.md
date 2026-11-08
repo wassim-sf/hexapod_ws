@@ -13,21 +13,22 @@ The machine-readable values are in [`robot_parameters.yaml`](../src/hexapod_desc
 
 ## Which robot this models
 
-The parts are the 16 STL files in the Robot Lk package (`Hexapod-Robot-Lk.zip`), kept in `refs/emre_hexapod/`.
+The **MakeYourPet hexapod**, with the part selection used by the [Robot Lk build guide](https://robotlk.com/build-your-own-18dof-hexapod-robot/). 18 x MG996R, with our own electronics: ESP32 + 2 x PCA9685 + Raspberry Pi 5.
 
-- **Origin.** The [Robot Lk guide](https://robotlk.com/build-your-own-18dof-hexapod-robot/) credits [`makeyourpet/hexapod`](https://github.com/makeyourpet/hexapod), which is MIT-licensed. Most files are byte-identical to that repo: the coxa, femur, idler, limitter, ms-holder, ring, rod and tip match its `Chipo` folder, and the frame, tibia, shield, covers, battery bar and calibration parts match its main `STL` folder.
-- **A mix of two designs.** The coxa and femur are the short Chipo versions (femur 60 mm), while the tibia and shield are from the main design (about 134 mm). Neither published config matches exactly, so this robot's numbers are measured here.
-- **Not confirmed to be MakerWorld 1973965.** No file here identifies Emre Kalem's model. Until that's settled, these files are treated under the stricter MakerWorld licence: they are not in git.
+- **Source of truth:** [`github.com/MakeYourPet/hexapod`](https://github.com/MakeYourPet/hexapod), **MIT licence**, commit `7d8fc80`, cloned to `refs/makeyourpet_hexapod`. The meshes in `meshes/makeyourpet` derive from it and are committed with its licence.
+- **Robot Lk zip:** used only to see which parts it chose. All 16 files are byte-identical to the MIT source (`measure_geometry.py` checks this if the zip is present). It stays out of git.
+- **A mix of two designs.** The coxa, femur, idler, ring, ms-holder, rod, limitter and tip come from the repo's `Chipo` folder (femur 60 mm), and the frame, tibia, shield, covers, battery bar and calibration parts from its main `STL` folder (tibia about 134 mm). Neither published config matches exactly, so this robot's numbers are measured here.
 
-**Differences from the brief's parts list:**
+**From the guide, and how they differ from what we use:**
 
-| Brief | What the parts or guide show |
+| Guide | This project |
 |---|---|
-| 18 x 695 bearings | No bearing seat. The idler has a Ø12 hole holding a printed Ø11.8 ring around a Ø10 boss, a plastic bushing. A 695 is Ø13 and does not fit |
-| M3 hardware | Screw holes are a Ø1.7 pilot in a Ø3 clearance. The guide specifies 2 x 8 mm self-tapping screws and M2 x 8 |
-| Arduino Mega + NRF24 | The guide uses a Pimoroni Servo 2040, and the original project a Servo 2040 or Pololu Maestro |
-| 3S 2200 mAh | The guide says 3S 2500 mAh |
-| 3 walls, 10% infill | Used for masses here, as asked. The guide says 15% infill |
+| Pimoroni Servo 2040 | ESP32 + 2 x PCA9685 + Pi 5 |
+| Buck converter and 5 V relay | 6 V BEC and a high-current switch: see [`power_budget.md`](power_budget.md) |
+| 2 x 8 mm self-tapping screws, M2 x 8 | The same. Screw holes are a Ø1.7 pilot in a Ø3 clearance |
+| No bearings: printed idlers and rings | The same |
+| 3S 2500 mAh | Sized below |
+| 15% infill | 3 walls, 10% infill for mass estimates, as asked |
 
 ## Frames and joint signs
 
@@ -37,7 +38,7 @@ Each leg frame is `base_link` rotated by the leg's yaw, with x pointing outward.
 
 | Joint | Axis in leg frame | Positive motion | Zero | Servo centre (DERIVED) |
 |---|---|---|---|---|
-| coxa | +z | foot swings counter-clockwise, seen from above | leg along its frame arm | 0° (PUBLISHED attach angle is −8°: see below) |
+| coxa | +z | foot swings counter-clockwise, seen from above | leg along its frame arm | 0° for now (see below) |
 | femur | −y | foot rises | hub-to-hub line level | +35.2° |
 | tibia | −y | foot swings outward | knee-to-foot line vertical | −21.4° |
 
@@ -50,7 +51,7 @@ Each leg frame is `base_link` rotated by the leg's yaw, with x pointing outward.
 | 5 | centre left | +90° | 0, 81.75 | L2 |
 | 6 | rear left | +135° | −83.15, 62.95 | L3 |
 
-**Front is an assumption:** STL +y is taken as forward. The hips are symmetric front to back, so this changes labels only. Left-hand parts are placed directly, and right legs are their mirror image, as the guide does in the slicer.
+STL +y is the robot's front (decided). Left-hand parts are placed directly, and right legs are their mirror image, as the guide does in the slicer.
 
 ## Geometry
 
@@ -74,9 +75,9 @@ Each leg frame is `base_link` rotated by the leg's yaw, with x pointing outward.
 - **Knee.** Of the two possible shaft positions on the tibia's servo, only the upper one gives the PUBLISHED length (133.15 vs 134 mm) and attach angle (68.6° vs 68°).
 - **Legs are planar.** Following the stack from coxa pivot to foot, the foot's lateral offset comes to exactly 0, so the library's planar convention holds.
 
-**Coxa attach angle.** The project publishes −8°, but the horn screws on the coxa are aligned with its arm. I can't derive the −8° from the parts, so the model uses 0°. Check this on the real robot.
+**Coxa servo centre.** The project publishes −8°, but the horn screws on the coxa are aligned with its arm. The model uses 0° for now (decided), to be calibrated on the real servos.
 
-**Servo model.** No MG996R model was supplied, so the servos are boxes from datasheet dimensions (40.7 x 19.7 mm body, 54 mm across the flange). The shaft positions are measured; the body height on the shaft side (8 mm) is ESTIMATED.
+**Servo model.** No MG996R model has been supplied, so the servos are our own boxes from datasheet dimensions (40.7 x 19.7 mm body, 54 mm across the flange). The shaft positions are measured; the body height on the shaft side (8 mm) is ESTIMATED.
 
 ## Servo: MG996R
 
@@ -133,11 +134,11 @@ Printed parts: PLA 1.24 g/cm³, 3 walls (1.2 mm shell) and 10% infill, with volu
 | Coxa | 13.0 | 6 | coxa | STL |
 | Femur | 18.2 | 6 | femur | STL |
 | Tibia + shield | 12.3 + 16.5 | 6 | tibia | STL |
-| Foot switch parts | about 5 | 6 | tibia | STL |
+| Foot switch parts (holder, rod, limitter) | about 5 | 6 | tibia | STL |
 | Idler + ring | 2.1 | 18 | with each servo | STL |
 | MG996R | 55 | 18 | 6 body, 6 coxa, 6 tibia | DATASHEET |
 | M2 x 8 screws | 0.2 | about 230 | all | ESTIMATED from holes |
-| Microswitch, cap, leg wiring | 14 | 6 | tibia | ESTIMATED |
+| Microswitch, rubber cap, leg wiring | 14 | 6 | tibia and foot | ESTIMATED |
 | LiPo 3S 2200 mAh | 185 | 1 | under body | ESTIMATED, typical pack |
 | 6 V 20 A BEC | 60 | 1 | under body | ESTIMATED, none chosen |
 | Pi 5 + Active Cooler | 46 + 30 | 1 | body | ESTIMATED. Raspberry Pi publishes neither mass |
@@ -146,19 +147,20 @@ Printed parts: PLA 1.24 g/cm³, 3 walls (1.2 mm shell) and 10% infill, with volu
 | PCA9685 | 10 | 2 | body | ESTIMATED |
 | 5 V 5 A buck | 25 | 1 | body | ESTIMATED |
 | IMU | 3 | 1 | body | ESTIMATED |
+| Servo power relay | 35 | 1 | body | DATASHEET ([JD2912](https://www.noco-evco.com/images/products/JD2912/JD2912_datasheet.pdf)) |
 | Main wiring, fuse | 50 | 1 | body | ESTIMATED |
 
 | Link | Mass (g) |
 |---|---|
-| base_link | 962 |
+| base_link | 997 |
 | coxa (with servo) | 72 |
 | femur | 20 |
 | tibia (with servo) | 107 |
 | foot | 1 |
 | **One leg** | **199** |
-| **Robot** | **2157** |
+| **Robot** | **2192** |
 
-Centre of mass at standby: (1.1, −0.8, 9.9) mm in `base_link`. **Weigh the robot when built.**
+Centre of mass at standby: (0.3, −0.8, 10.4) mm in `base_link`. **Weigh the robot when built.**
 
 ## Fitting the electronics
 
@@ -173,6 +175,7 @@ Centre of mass at standby: (1.1, −0.8, 9.9) mm in `base_link`. **Weigh the rob
 | LiPo | 105 x 34 x 24 | Under the body, through the battery bars |
 | ESP32 | 51 x 28 x 13 | Under the body, in the pocket beside the LiPo |
 | 6 V BEC | up to 50 x 28 x 20 | Under the body, in the other pocket |
+| Servo power relay | 28 x 28 x 25 | On the top cover's rear bar. See [`power_budget.md`](power_budget.md) |
 
 Sources for the Pi: official [mechanical drawing](https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-mechanical-drawing.pdf) and [Active Cooler drawing](https://datasheets.raspberrypi.com/cooling/raspberry-pi-active-cooler-mechanical-drawing.pdf). Sizes for the other boards are typical values, so check them against what you buy.
 
@@ -184,54 +187,45 @@ Sources for the Pi: official [mechanical drawing](https://datasheets.raspberrypi
 - A larger BEC, or the 2–3 regulators you mentioned, would not fit in the pocket and needs a printed mount.
 - The floor boards have no clearance for servo-connector bending in this check. Check with the real wires.
 
-## Torque margin
+## Torque and power
 
-Run [`power_budget.py`](../scripts/power_budget.py). These are static figures at 6 V: load = weight / feet on the ground, stall 1.08 N·m.
+See [`power_budget.md`](power_budget.md). At standby, holding a tripod uses 51% of femur stall torque.
 
-| Standing tripod, foot from hip | Femur | Tibia |
+## Foot contact
+
+Each foot has one 3-pin microswitch, as in the original design.
+
+**Mechanism, from the parts.** In `ms-holder`, two guides at z = 8–10 and 15–17 (MEASURED) carry the rod. Two side plates 12 mm apart at z = 25–34 form the switch pocket, directly above the rod. When the foot presses, the rod lifts the limitter into the switch. There is no screw mount: the pocket is plain, so glue is likely. The tip can rise only 1.0 mm before it meets the holder (MEASURED), which also means the loaded leg is about 1 mm shorter than the 133.15 mm in the model.
+
+**In the URDF.** Each `leg_N_foot_link` is kept as a separate link and carries a Gazebo contact sensor on its collision. Topic: `/foot_contact/leg_N`. Tested in Gazebo Sim 8 with a drop onto a plane: all six reported contact between their own foot and the ground. A contact sensor detects any touch, whereas the real switch needs enough force to move the rod.
+
+**Parameters for step 4** (ESTIMATED, in `foot_contact` in the YAML). The simulated switch should apply them to the sensor's contact force:
+
+| Parameter | Default | Basis |
 |---|---|---|
-| 100 mm out, 85 mm down | 37% of stall | 13% |
-| **120 mm out, 85 mm down (standby)** | **50%** | **23%** |
-| 140 mm out, 85 mm down | 63% | 33% |
-| 160 mm out, 85 mm down | 76% | 43% |
+| `sim_force_threshold` | 1.5 N | Middle of [KW11 force codes](https://www.switch-china.com/kw11-micro-switch-series-product/) of 0.75, 1.5 and 2.5 N. Your switch's value is not measured |
+| `sim_release_force` | 0.5 N | Assumed, so that the signal doesn't chatter |
+| `sim_delay` | 10 ms | About 5 ms debounce plus 5 ms sampling |
 
-| Default gait, worst moment | Femur | Tibia |
-|---|---|---|
-| Tripod | 54% | 26% |
-| Ripple | 43% | 21% |
-| Wave | 34% | 17% |
+Rod friction is not included. Weigh down a real foot to measure the actual trigger force.
 
-Accelerations and foot impacts add to these. A wider stance quickly uses up the margin. A heavier battery adds about 1% of femur torque per 40 g.
+**On the ESP32**, from `foot_contact` in the YAML. These pins avoid the strapping pins and the input-only pins that have no pull-ups. GPIO 21/22 stay free for I2C (PCA9685 and IMU) and 16/17 for the Pi's UART.
 
-## Power budget
+| Leg | Name | Project name | ESP32 GPIO |
+|---|---|---|---|
+| 1 | front right | R1 | 18 |
+| 2 | centre right | R2 | 19 |
+| 3 | rear right | R3 | 23 |
+| 4 | front left | L1 | 25 |
+| 5 | centre left | L2 | 26 |
+| 6 | rear left | L3 | 27 |
 
-Estimated from stance torque and the running current, so treat it as ±50%. Measure it on the real robot.
-
-| Case at 6 V | Current | XL4016 (8 A) |
-|---|---|---|
-| Walking, tripod, mean | about 11 A (65 W) | **1.4x its rating** |
-| All servos running, datasheet | 9–16 A | Over its rating |
-| All stalled | 45 A (270 W) | **5.6x its rating** |
-
-The XL4016's [8 A rating](https://www.alldatasheet.com/datasheet-pdf/pdf/1134370/XLSEMI/XL4016E1.html) comes from a datasheet mirror and may need derating for heat. The project's own config warns at 8 A and shuts off at 10 A.
-
-**Regulators.** A 6 V BEC of at least 20 A continuous and about 40 A peak covers walking at nearly twice the mean. A separate 5 V 5 A regulator feeds the Pi. Keep a main fuse on the pack; about 40 A suits the 27 A peak.
-
-**Battery**, 3S at 11.1 V with 90% regulators and using 80% of capacity. Walking draws about 7.5 A; peak is about 27 A at the BEC limit with the Pi at full load.
-
-| Capacity | Walking time | C rating for the peak |
-|---|---|---|
-| 2200 mAh | 14 min | 12C |
-| 3300 mAh | 21 min | 8C |
-| 4000 mAh | 26 min | 7C |
-| 5000 mAh | 32 min | 5.3C |
-
-**For about 20 minutes, use 3S 3300–4000 mAh at 20C or higher.** The margin in C covers cell ageing and the ±50% uncertainty. A 3300 mAh pack adds about 95 g, or about 2% of femur stall.
+**Wiring:** switch C to the GPIO with `INPUT_PULLUP`, NO to GND, NC unused. Pressed reads LOW. Debounce in firmware (about 5 ms). A broken wire reads as "no contact", so check all six in the startup test. This differs from the original, which drives the signal from NC (GND) and NO (3V3).
 
 ## Known gaps
 
 - **MG996R model not supplied.** Servo visuals are placeholder boxes.
-- **Foot tip is a rigid assumption.** The real foot has a spring-loaded rod and a microswitch, plus an 8 mm rubber cap on the tip in the guide.
-- **Coxa attach angle:** see Geometry.
+- **Foot is rigid in the model.** The real rod moves 1 mm, and the guide adds an 8 mm rubber cap whose effect on length isn't modelled.
+- **Coxa servo centre:** to calibrate on real servos.
 - **Joint friction, damping and servo response are not set.** They need measuring.
 - **No IMU chosen.** `imu_link` is a placeholder position.

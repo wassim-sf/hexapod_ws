@@ -1,10 +1,10 @@
 """Assembly of the hexapod STL parts into URDF link frames. Millimetres.
 
-Part set: refs/emre_hexapod (Robot Lk package). It mixes the 60 mm "Chipo" coxa and femur from
-github.com/makeyourpet/hexapod with that project's long tibia and shield. See docs/robot_parameters.md.
+Source of truth: github.com/MakeYourPet/hexapod (MIT), commit 7d8fc80, cloned to refs/makeyourpet_hexapod.
+The part selection follows the Robot Lk build: the 60 mm Chipo coxa and femur with the long main tibia and shield.
 
-Leg link frames at q = 0: x radially outward, z up, y = z x x. The supplied parts are for left-side
-legs, so they are placed directly for those; right-side legs are the mirror image (y -> -y).
+Leg link frames at q = 0: x radially outward, z up, y = z x x. The parts are for left-side legs, so they are
+placed directly for those; right-side legs are the mirror image (y -> -y).
 
 Everything here is measured from the STLs. measure_geometry.py re-derives it and fails on drift.
 """
@@ -14,7 +14,18 @@ import numpy as np
 import trimesh
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PARTS = ROOT / 'refs/emre_hexapod'
+SOURCE = ROOT / 'refs/makeyourpet_hexapod'
+SOURCE_COMMIT = '7d8fc8034d715d1c9373f48281ecfa500c994d8b'
+PART_FILES = {  # our name: path in the MIT repo
+    'Left-coxa-996': 'Chipo/coxa-996', 'Left-femur-996': 'Chipo/femur-996', 'Left-tibia': 'STL/left-tibia', 'shield': 'STL/shield',
+    'idler': 'Chipo/idler', 'ring': 'Chipo/ring', 'ms-holder': 'Chipo/ms-holder', 'rod': 'Chipo/rod', 'limitter': 'Chipo/limitter', 'tip': 'Chipo/tip',
+    'frame': 'STL/frame', 'bottom-cover-flat': 'STL/bottom-cover-flat', 'top-cover4': 'STL/top-cover4', 'battery-bar': 'STL/battery-bar',
+    'calibration-arm': 'STL/calibration-arm', 'calibration-ruler': 'STL/calibration-ruler',
+}
+
+
+def part_path(name):
+    return SOURCE / f'{PART_FILES[name]}.stl'
 
 # --- Measured relations ---
 SHAFT_OFFSET = 10.25      # shaft from the mounting-hole centre, along the servo: calibration-arm hole vs calibration-ruler pattern
@@ -128,6 +139,19 @@ def servo_mesh(horn=True, body_only=False):
     return trimesh.util.concatenate(parts)
 
 
+# Foot switch: the ms-holder's side plates make a 12 mm wide pocket above the rod, at holder z = 25 to 34.
+SWITCH_POCKET = (-1.5, 0.0, 29.5)    # centre in the holder STL
+SWITCH_SIZE = (6.5, 12.0, 9.0)       # the pocket's free space; the switch itself is glued in
+ROD_TRAVEL = 1.0                     # tip top (z = 6) to holder bottom (z = 7) in the STL
+
+
+def switch_mesh():
+    box = trimesh.creation.box(extents=SWITCH_SIZE)
+    box.apply_translation(SWITCH_POCKET)
+    box.apply_transform(FOOT_T)
+    return box
+
+
 def idler_transform(servo_t):
     """The idler caps the servo's wire-side end, with its hole on the shaft axis."""
     # idler: hole (10, 10), ceiling at z = 30, outside towards +z, so flip z onto the servo's back.
@@ -143,7 +167,7 @@ _cache = {}
 
 def load(name):
     if name not in _cache:
-        mesh = trimesh.load_mesh(PARTS / f'{name}.stl', force='mesh')
+        mesh = trimesh.load_mesh(part_path(name), force='mesh')
         bodies = [b for b in mesh.split(only_watertight=False) if abs(b.volume) > 1.0]
         mesh = trimesh.util.concatenate(bodies) if bodies else mesh
         trimesh.repair.fix_normals(mesh)

@@ -8,7 +8,7 @@ import numpy as np
 import trimesh
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import emre_cad as cad  # noqa: E402
+import parts_cad as cad  # noqa: E402
 import sweep_limits as sweep  # noqa: E402
 
 src = (pathlib.Path(__file__).parent / 'generate_model.py').read_text()

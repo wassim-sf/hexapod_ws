@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-measure the geometry from the STL files and compare it with emre_cad.py and the published project config.
+"""Re-measure the geometry from the STL files and compare it with parts_cad.py and the published project config.
 
 Prints each measurement and exits non-zero if one drifts by more than 0.1 mm.
 """
@@ -12,9 +12,10 @@ import numpy as np
 import trimesh
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import emre_cad as cad  # noqa: E402
+import parts_cad as cad  # noqa: E402
 
-CONFIG = cad.ROOT / 'refs/makeyourpet_hexapod'
+CONFIG = cad.SOURCE
+ZIP = cad.ROOT / 'refs/emre_hexapod'  # optional: the Robot Lk zip, only to compare its part choice
 fails = []
 
 
@@ -27,7 +28,7 @@ def fit(p):
 
 
 def circles(name, axis, t, dmin, dmax):
-    m = trimesh.load_mesh(cad.PARTS / f'{name}.stl', force='mesh')
+    m = trimesh.load_mesh(cad.part_path(name), force='mesh')
     oth = [i for i in range(3) if i != axis]
     n, o = np.zeros(3), np.zeros(3)
     n[axis], o[axis] = 1, t
@@ -71,7 +72,7 @@ pairs = sorted(np.linalg.norm(a - b) for a, b in itertools.combinations(tibia, 2
 check('tibia servo holes, short spacing', pairs[0], 10.0)
 print(f'     tibia holes {np.round(tibia, 1).tolist()}')
 check('tibia length (knee to tip), model value is derived', cad.TIBIA, 133.15)
-m = trimesh.load_mesh(cad.PARTS / 'frame.stl', force='mesh')
+m = trimesh.load_mesh(cad.part_path('frame'), force='mesh')
 print(f'frame bbox {np.round(m.extents, 1)} mm')
 
 hips = {k: cad.hip_xy(y) for _, k, _, y in cad.LEGS}
@@ -89,4 +90,7 @@ if CONFIG.exists():
     for key, v in measured.items():
         print(f'  {key} published {value(main, key):7.2f}   STL {v:7.2f}')
     print(f"  attach angles published coxa {value(main, 'COXA_ATTACH_ANGLE'):.0f}, femur {value(main, 'FEMUR_ATTACH_ANGLE'):.0f}, tibia {value(main, 'TIBIA_ATTACH_ANGLE'):.0f}")
+if ZIP.exists():
+    same = [n for n in cad.PART_FILES if (ZIP / f'{n}.stl').exists() and (ZIP / f'{n}.stl').read_bytes() == cad.part_path(n).read_bytes()]
+    print(f'\nRobot Lk zip: {len(same)} of {len(cad.PART_FILES)} parts are byte-identical to the MIT source')
 sys.exit(1 if fails else 0)

@@ -12,7 +12,7 @@ import trimesh
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import emre_cad as cad  # noqa: E402
+import parts_cad as cad  # noqa: E402
 import sweep_limits as sweep  # noqa: E402
 from hexapod_kinematics import RobotModel, link_frames  # noqa: E402
 from hexapod_kinematics.checks import _segment_distance  # noqa: E402

@@ -1,1 +1,1 @@
-Generated meshes go in `emre/`. They derive from personal-use models and are not in git: see the top-level README.
+`makeyourpet/` holds meshes generated from the MIT parts, with their licence. `mg996r/` is for meshes from the GrabCAD servo model, and stays out of git.

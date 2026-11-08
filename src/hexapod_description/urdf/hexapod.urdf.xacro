@@ -144,6 +144,22 @@
       </collision>
       <xacro:inertial_block d="${p['links']['foot']}" sign="${sign}"/>
     </link>
+
+    <!-- Foot contact sensor, standing in for the microswitch. The foot must stay a separate link for this to work. -->
+    <gazebo reference="leg_${id}_foot_joint">
+      <preserveFixedJoint>true</preserveFixedJoint>
+      <disableFixedJointLumping>true</disableFixedJointLumping>
+    </gazebo>
+    <gazebo reference="leg_${id}_foot_link">
+      <sensor name="leg_${id}_foot_contact" type="contact">
+        <always_on>true</always_on>
+        <update_rate>${p['foot_contact']['update_rate_hz']}</update_rate>
+        <contact>
+          <collision>leg_${id}_foot_link_collision</collision>
+          <topic>foot_contact/leg_${id}</topic>
+        </contact>
+      </sensor>
+    </gazebo>
   </xacro:macro>
 
   <xacro:leg id="1"/>

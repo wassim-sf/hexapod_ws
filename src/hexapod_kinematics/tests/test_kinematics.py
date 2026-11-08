@@ -119,3 +119,22 @@ def test_parameters_file_is_found_without_ros(monkeypatch):
 def test_missing_parameters_gives_a_clear_error(tmp_path):
     with pytest.raises(FileNotFoundError):
         RobotModel.load(tmp_path / 'missing.yaml')
+
+
+def test_each_foot_has_its_own_switch_input(model):
+    pins = model.raw['foot_contact']['esp32_gpio']
+    assert sorted(pins) == [leg.id for leg in model.legs]
+    assert len(set(pins.values())) == 6
+    assert not set(pins.values()) & {0, 2, 5, 12, 15, 34, 35, 36, 39}, 'strapping or input-only pins without pull-ups'
+
+
+def test_simulated_switch_parameters_are_sensible(model):
+    c = model.raw['foot_contact']
+    assert 0.0 < c['sim_release_force'] < c['sim_force_threshold']
+    assert c['sim_delay'] >= 0.0
+
+
+def test_esp32_pins_do_not_overlap(model):
+    e = model.raw['electronics']
+    pins = list(model.raw['foot_contact']['esp32_gpio'].values()) + [e['servo_power_gpio'], e['pca9685_oe_gpio'], *e['i2c_gpio'].values(), *e['uart_gpio'].values()]
+    assert len(pins) == len(set(pins))

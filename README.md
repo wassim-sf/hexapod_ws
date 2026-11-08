@@ -2,17 +2,14 @@
 
 ROS 2 Jazzy description of an 18-DOF hexapod with MG996R servos, an ESP32 with 2 x PCA9685, and a Raspberry Pi 5. It is the shared robot model for a classical kinematics controller and a reinforcement learning policy. The previous robot, a RookiDroid Mochi, is at git tag `mochi-v1`.
 
-## Model files are not in this repo
+## Model sources
 
-The robot's STL files are for personal use, so they and every mesh derived from them are in `.gitignore` and must never be committed:
+The robot is the [MakeYourPet hexapod](https://github.com/MakeYourPet/hexapod), Copyright (c) 2022 MakeYourPet.com, MIT licence (commit `7d8fc80`). It uses the part selection of the [Robot Lk guide](https://robotlk.com/build-your-own-18dof-hexapod-robot/): the 60 mm Chipo coxa and femur with the long main tibia and shield. The meshes in `src/hexapod_description/meshes/makeyourpet/` derive from those parts, and that folder includes the licence.
 
-- `refs/emre_hexapod/`: Emre Kalem's hexapod, MakerWorld 1973965, under MakerWorld's Standard Digital File License (personal use only, no redistribution, including remixes).
-- `refs/mg996r/`: MG996R model from a GrabCAD user upload.
-- `src/hexapod_description/meshes/emre/` and `docs/images/`: meshes and renders generated from them.
+These stay out of git, with anything derived from them:
 
-Our own code and the numbers measured from the parts are committed. To get the meshes on a fresh clone, get the STL files yourself, put them in `refs/emre_hexapod/`, and run `generate_model.py` as shown under [Regenerate meshes and parameters](#regenerate-meshes-and-parameters).
-
-All geometry, masses and limits live in [`robot_parameters.yaml`](src/hexapod_description/config/robot_parameters.yaml). Sources and estimates are listed in [`docs/robot_parameters.md`](docs/robot_parameters.md).
+- `refs/emre_hexapod/`: the Robot Lk zip, used only for comparison, and any MakerWorld files (personal use only, no redistribution, including remixes).
+- `refs/mg996r/`: an MG996R model from a GrabCAD user upload, licence unclear. Until it's added, servos are our own placeholder boxes.
 
 ## Build and run
 
@@ -43,9 +40,19 @@ Then run it and open http://localhost:8080:
 .venv/bin/python -m hexapod_sim
 ```
 
-It needs the generated meshes. It listens on this machine only. Add `--host 0.0.0.0` to allow other machines, and `--port` to change the port.
+It listens on this machine only. Add `--host 0.0.0.0` to allow other machines, and `--port` to change the port.
 
-To create screenshots of each mode in `docs/images/` (not committed, because they show the meshes), run `scripts/capture_sim_screenshots.py`.
+| Forward kinematics | Body pose IK |
+|---|---|
+| ![Forward kinematics mode with a tibia limit warning](docs/images/mode_fk.png) | ![Body pose IK mode](docs/images/mode_body.png) |
+
+| Leg patterns | Gait playback |
+|---|---|
+| ![Leg patterns mode at the laydown pose](docs/images/mode_pattern.png) | ![Gait playback mode, tripod gait](docs/images/mode_gait.png) |
+
+| Unreachable feet and limits | Servo speed |
+|---|---|
+| ![Red warnings for unreachable feet and joint limits](docs/images/warning_unreachable.png) | ![Red warnings for servo speed](docs/images/warning_speed.png) |
 
 ## Kinematics library
 
@@ -95,13 +102,14 @@ python3 scripts/verify_joints.py
 
 ## Regenerate meshes and parameters
 
-`refs/` is not tracked. `makeyourpet_hexapod` is only needed for the cross-check against its published config.
+`refs/` is not tracked.
 
 ```bash
-git clone https://github.com/makeyourpet/hexapod refs/makeyourpet_hexapod
+git clone https://github.com/MakeYourPet/hexapod refs/makeyourpet_hexapod
+git -C refs/makeyourpet_hexapod checkout 7d8fc80
 python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt -e src/hexapod_kinematics -e src/hexapod_sim
 
-.venv/bin/python scripts/generate_model.py            # write meshes/emre and the YAML
+.venv/bin/python scripts/generate_model.py            # write the meshes and the YAML
 .venv/bin/python scripts/measure_geometry.py          # compare the model with the STLs
 .venv/bin/python scripts/sweep_limits.py              # joint limits from mesh contact
 .venv/bin/python scripts/calibrate_leg_collision.py   # refit leg collision capsules
@@ -113,4 +121,4 @@ python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt -e sr
 
 ## Licence
 
-Our code is GPL-3.0. The STL and MG996R files are not ours and are not covered by it: see [Model files are not in this repo](#model-files-are-not-in-this-repo).
+Our code is GPL-3.0. The meshes in `meshes/makeyourpet/` are MIT, from MakeYourPet: see the `LICENSE` file there.

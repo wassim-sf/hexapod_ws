@@ -119,17 +119,17 @@ These are from `generate_gait` with no issues on any row. Commands above a gait'
 
 | Gait | Top speed | Command | Applied | Min margin | Peak joint speed (coxa, femur, tibia) |
 |---|---|---|---|---|---|
-| Tripod | 27.3 mm/s | Forward 15 mm/s | 15.0 mm/s | 80.0 mm | 0.28, 1.08, 0.79 rad/s |
-| Tripod | | Sideways 15 mm/s | 15.0 mm/s | 83.0 mm | 0.20, 1.11, 0.86 rad/s |
-| Tripod | | Turn 0.1 rad/s | 0.100 rad/s | 85.5 mm | 0.42, 1.04, 0.67 rad/s |
-| Ripple | 14.3 mm/s | Forward 15 mm/s | 14.3 mm/s | 76.8 mm | 0.52, 1.15, 0.96 rad/s |
-| Ripple | | Sideways 15 mm/s | 14.3 mm/s | 82.0 mm | 0.37, 1.21, 1.12 rad/s |
-| Ripple | | Turn 0.1 rad/s | 0.064 rad/s | 82.5 mm | 0.52, 1.05, 0.69 rad/s |
-| Wave | 5.9 mm/s | Forward 15 mm/s | 5.9 mm/s | 78.6 mm | 0.52, 1.15, 0.97 rad/s |
-| Wave | | Sideways 15 mm/s | 5.9 mm/s | 83.3 mm | 0.37, 1.21, 1.12 rad/s |
-| Wave | | Turn 0.1 rad/s | 0.026 rad/s | 82.0 mm | 0.52, 1.05, 0.69 rad/s |
+| Tripod | 27.3 mm/s | Forward 15 mm/s | 15.0 mm/s | 80.7 mm | 0.28, 1.08, 0.79 rad/s |
+| Tripod | | Sideways 15 mm/s | 15.0 mm/s | 83.8 mm | 0.20, 1.11, 0.86 rad/s |
+| Tripod | | Turn 0.1 rad/s | 0.100 rad/s | 86.2 mm | 0.42, 1.04, 0.67 rad/s |
+| Ripple | 14.3 mm/s | Forward 15 mm/s | 14.3 mm/s | 77.5 mm | 0.52, 1.15, 0.96 rad/s |
+| Ripple | | Sideways 15 mm/s | 14.3 mm/s | 82.5 mm | 0.37, 1.21, 1.12 rad/s |
+| Ripple | | Turn 0.1 rad/s | 0.064 rad/s | 83.3 mm | 0.52, 1.05, 0.69 rad/s |
+| Wave | 5.9 mm/s | Forward 15 mm/s | 5.9 mm/s | 79.3 mm | 0.52, 1.15, 0.97 rad/s |
+| Wave | | Sideways 15 mm/s | 5.9 mm/s | 83.8 mm | 0.37, 1.21, 1.12 rad/s |
+| Wave | | Turn 0.1 rad/s | 0.026 rad/s | 82.8 mm | 0.52, 1.05, 0.69 rad/s |
 
-**Why these defaults are slow.** Holding a tripod stance uses about 50% of femur stall torque. Peak joint speed is about 16% of the servo's no-load 7.48 rad/s.
+**Why these defaults are slow.** Holding a tripod stance uses about 51% of femur stall torque. Peak joint speed is about 16% of the servo's no-load 7.48 rad/s.
 
 **Limits of these results.** The generator does not model torque, so a gait with no warnings can still overload a servo.
 
