@@ -37,6 +37,9 @@ sudo apt-get install -y \
   ros-jazzy-robot-state-publisher \
   ros-jazzy-joint-state-publisher-gui \
   ros-jazzy-ros-gz \
+  ros-jazzy-ros2-control \
+  ros-jazzy-ros2-controllers \
+  ros-jazzy-gz-ros2-control \
   liburdfdom-tools
 
 # Report the result. ROS setup scripts reference unset variables, so relax -u first.
