@@ -113,3 +113,4 @@ python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
 ## Licence
 
 GPL-3.0, because the meshes derive from RookiDroid's GPL-3.0 STL files.
+# hexapod_ws
