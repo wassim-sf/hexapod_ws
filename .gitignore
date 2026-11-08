@@ -8,3 +8,12 @@ __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
+.venv-cad/
+
+# Personal-use models, never to be committed:
+# - Emre Kalem's hexapod (MakerWorld 1973965): MakerWorld Standard Digital File License, no redistribution or remixes.
+# - MG996R model: GrabCAD user upload, licence unclear.
+# This covers the originals and every mesh derived from them.
+refs/emre_hexapod/
+refs/mg996r/
+src/hexapod_description/meshes/emre/
