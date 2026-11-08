@@ -25,7 +25,7 @@ Given a foot at `(x, y, z)` in the leg frame:
 2. **Reduce to two links.** Let `a = radial − c` and `b = z`. The femur and tibia must reach `(a, b)` from the femur axis, at distance `D = hypot(a, b)`.
 3. **Reachability.** A solution exists only if `|f − t| ≤ D ≤ f + t`. If not, the foot is reported as unreachable with its distance from the workspace, and the angles returned are for the nearest reachable point in that direction.
 4. **Elbow.** The tibia direction is `q2 + q3 − 90°` measured from the femur's zero, so the elbow angle between femur and tibia is `e = q3 − 90°`. The law of cosines gives `cos(e) = (D² − f² − t²) / (2·f·t)`.
-5. **Choose the branch.** The tibia limit (up to +75°) means `e` is always negative, so `e = −acos(…)` is the only branch inside the limits. Then `q3 = e + 90°`.
+5. **Choose the branch.** With the tibia limited to between −90° and +90°, `e` is always between −180° and 0°, so `e = −acos(…)` is the only branch inside the limits. Then `q3 = e + 90°`. A robot's YAML must keep the tibia within that range for IK to be single-valued.
 6. **Femur.** `q2 = atan2(b, a) − atan2(t·sin(e), f + t·cos(e))`.
 
 IK then FK agrees within 0.01 mm over 20,000 random points. A foot exactly on the coxa axis has no defined `q1`; `atan2` returns 0 there.
@@ -38,7 +38,7 @@ IK then FK agrees within 0.01 mm over 20,000 random points. A foot exactly on th
 foot_body = Rᵀ·(foot_world − p)
 ```
 
-Each foot then goes through the leg IK. Zero translation and rotation means the standby pose, with the feet on `z = 0` and the underside of the body (base_link) 38.0 mm above the ground.
+Each foot then goes through the leg IK. Zero translation and rotation means the standby pose, with the feet on `z = 0` and base_link at the stance height.
 
 ## Checks
 
@@ -47,7 +47,7 @@ Each check returns `Issue` objects with a kind and a readable message.
 | Kind | Triggered when |
 |---|---|
 | `unreachable` | Foot outside the workspace, with the distance in mm |
-| `joint_limit` | Angle outside the YAML limits (tibia −50° to +75°) |
+| `joint_limit` | Angle outside the YAML limits |
 | `leg_collision` | Neighbouring leg capsules overlap |
 | `servo_speed` | A joint must exceed its YAML velocity to move between two poses in the given time |
 | `too_few_feet` | Fewer than 3 feet on the ground |
@@ -59,23 +59,23 @@ Each leg is modelled as three capsules on the leg's plane. Neighbouring legs, fo
 
 | Capsule | From | To | Radius | Source |
 |---|---|---|---|---|
-| Femur | Femur axis | Tibia axis | 12 mm | Block half-height 11.2 mm |
-| Upper tibia | Tibia axis | 60 mm down | 25 mm | Fitted to mesh contact |
-| Lower tibia | 60 mm down | Foot | 6 mm | Foot tip half-width |
+| Femur | Femur axis | Knee | 32 mm | Fitted to mesh contact |
+| Upper tibia | Knee | 95 mm down | 20 mm | Fitted to mesh contact |
+| Lower tibia | 95 mm down | Foot | 4 mm | Fitted to mesh contact |
 
-[`calibrate_leg_collision.py`](../scripts/calibrate_leg_collision.py) compares this model with collision detection on the real meshes for 8,000 random poses where neighbouring legs are close, across all pair types. Half the poses are used to fit the radius, and half are held out.
+[`calibrate_leg_collision.py`](../scripts/calibrate_leg_collision.py) compares this model with collision detection on the real meshes for 8,000 random poses where neighbouring legs are close, across all pair types. Half the poses are used to fit the radii, and half are held out.
 
 | | Fit poses | Held-out poses |
 |---|---|---|
-| True contacts missed | 1 of 160 | 0 of 102 |
-| False alarms | 55 of 3840 (1.4%) | 97 of 3898 (2.5%) |
+| True contacts missed | 11 of 1039 | 9 of 1024 |
+| False alarms | 127 of 2961 (4.3%) | 138 of 2976 (4.6%) |
 
-When both legs swing toward each other, the capsules trigger 0–2° before the meshes touch: at 39–42° against 39–43° for the meshes.
+When both legs swing toward each other, the capsules trigger within about 3° of the meshes: side pairs at 29–32° against 30–33° for the meshes, front and rear pairs at 63–67° against 60–66°.
 
 **What this check does not cover:**
 
 - Non-neighbouring legs.
-- A tibia hitting the body. For example, at femur −75° the tibia reaches the body after −26° (found in step 1).
+- A foot or tibia hitting the body. For example, the foot reaches the body at femur −39° with the tibia at −60°.
 - Horns, screws and wires, which are not in the meshes.
 
 ## Static stability
@@ -119,23 +119,23 @@ These are from `generate_gait` with no issues on any row. Commands above a gait'
 
 | Gait | Top speed | Command | Applied | Min margin | Peak joint speed (coxa, femur, tibia) |
 |---|---|---|---|---|---|
-| Tripod | 27.3 mm/s | Forward 15 mm/s | 15.0 mm/s | 82.4 mm | 0.35, 1.32, 1.10 rad/s |
-| Tripod | | Sideways 15 mm/s | 15.0 mm/s | 81.4 mm | 0.31, 1.34, 1.15 rad/s |
-| Tripod | | Turn 0.1 rad/s | 0.100 rad/s | 88.0 mm | 0.42, 1.24, 0.83 rad/s |
-| Ripple | 14.3 mm/s | Forward 15 mm/s | 14.3 mm/s | 79.7 mm | 0.66, 1.45, 1.45 rad/s |
-| Ripple | | Sideways 15 mm/s | 14.3 mm/s | 81.8 mm | 0.57, 1.50, 1.57 rad/s |
-| Ripple | | Turn 0.1 rad/s | 0.081 rad/s | 82.6 mm | 0.66, 1.26, 0.87 rad/s |
-| Wave | 5.9 mm/s | Forward 15 mm/s | 5.9 mm/s | 81.5 mm | 0.65, 1.45, 1.46 rad/s |
-| Wave | | Sideways 15 mm/s | 5.9 mm/s | 84.1 mm | 0.57, 1.50, 1.57 rad/s |
-| Wave | | Turn 0.1 rad/s | 0.033 rad/s | 79.3 mm | 0.66, 1.26, 0.87 rad/s |
+| Tripod | 27.3 mm/s | Forward 15 mm/s | 15.0 mm/s | 80.0 mm | 0.28, 1.08, 0.79 rad/s |
+| Tripod | | Sideways 15 mm/s | 15.0 mm/s | 83.0 mm | 0.20, 1.11, 0.86 rad/s |
+| Tripod | | Turn 0.1 rad/s | 0.100 rad/s | 85.5 mm | 0.42, 1.04, 0.67 rad/s |
+| Ripple | 14.3 mm/s | Forward 15 mm/s | 14.3 mm/s | 76.8 mm | 0.52, 1.15, 0.96 rad/s |
+| Ripple | | Sideways 15 mm/s | 14.3 mm/s | 82.0 mm | 0.37, 1.21, 1.12 rad/s |
+| Ripple | | Turn 0.1 rad/s | 0.064 rad/s | 82.5 mm | 0.52, 1.05, 0.69 rad/s |
+| Wave | 5.9 mm/s | Forward 15 mm/s | 5.9 mm/s | 78.6 mm | 0.52, 1.15, 0.97 rad/s |
+| Wave | | Sideways 15 mm/s | 5.9 mm/s | 83.3 mm | 0.37, 1.21, 1.12 rad/s |
+| Wave | | Turn 0.1 rad/s | 0.026 rad/s | 82.0 mm | 0.52, 1.05, 0.69 rad/s |
 
-**Why these defaults are slow.** Holding a tripod stance already uses about 54% of femur stall torque. The peak of 1.57 rad/s is also below 2.18 rad/s, the slowest rating found for this servo (TowerPro's 0.48 s/60°), so the defaults stay valid until that conflict is settled. The checks use the YAML limit of 13.09 rad/s, so a warning-free gait is not necessarily safe on hardware if the slower rating turns out to be right.
+**Why these defaults are slow.** Holding a tripod stance uses about 50% of femur stall torque. Peak joint speed is about 16% of the servo's no-load 7.48 rad/s.
 
-**Limits of these results.** The generator does not model torque, so a gait with no warnings can still overload a servo. Going further than the defaults also meets the joint limits: a tripod with 60 mm stride and 30 mm lift reports `joint_limit`.
+**Limits of these results.** The generator does not model torque, so a gait with no warnings can still overload a servo.
 
 ## Simulator
 
-The simulator uses Viser. It places the STL meshes directly with the library's `link_frames` instead of loading the URDF, so it doesn't need `xacro` or ROS, and the view uses the same FK as everything else. Plotly Dash wasn't needed.
+The simulator uses Viser. It places the STL meshes directly with the library's `link_frames` instead of loading the URDF, so it doesn't need `xacro` or ROS, and the view uses the same FK as everything else. Plotly Dash wasn't needed. The meshes come from `visual.mesh_subdir` in the YAML.
 
 - **Forward kinematics and leg patterns.** There is no ground model here, so the body stays level and the feet within 3 mm of the lowest foot count as supporting. The sliders go past the joint limits so that you can see the warnings.
 - **Servo speed in slider modes.** Dragging a slider has no real timing, so the check compares the start pose (set when you enter the mode or press the button) with the current pose over the chosen move time.

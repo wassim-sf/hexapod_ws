@@ -17,3 +17,4 @@ __pycache__/
 refs/emre_hexapod/
 refs/mg996r/
 src/hexapod_description/meshes/emre/
+docs/images/

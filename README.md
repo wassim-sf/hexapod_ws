@@ -1,6 +1,16 @@
 # Hexapod workspace
 
-ROS 2 Jazzy description of an 18-DOF hexapod, based on the RookiDroid Mochi (MG92B servos). It is the shared robot model for a classical kinematics controller and a reinforcement learning policy.
+ROS 2 Jazzy description of an 18-DOF hexapod with MG996R servos, an ESP32 with 2 x PCA9685, and a Raspberry Pi 5. It is the shared robot model for a classical kinematics controller and a reinforcement learning policy. The previous robot, a RookiDroid Mochi, is at git tag `mochi-v1`.
+
+## Model files are not in this repo
+
+The robot's STL files are for personal use, so they and every mesh derived from them are in `.gitignore` and must never be committed:
+
+- `refs/emre_hexapod/`: Emre Kalem's hexapod, MakerWorld 1973965, under MakerWorld's Standard Digital File License (personal use only, no redistribution, including remixes).
+- `refs/mg996r/`: MG996R model from a GrabCAD user upload.
+- `src/hexapod_description/meshes/emre/` and `docs/images/`: meshes and renders generated from them.
+
+Our own code and the numbers measured from the parts are committed. To get the meshes on a fresh clone, get the STL files yourself, put them in `refs/emre_hexapod/`, and run `generate_model.py` as shown under [Regenerate meshes and parameters](#regenerate-meshes-and-parameters).
 
 All geometry, masses and limits live in [`robot_parameters.yaml`](src/hexapod_description/config/robot_parameters.yaml). Sources and estimates are listed in [`docs/robot_parameters.md`](docs/robot_parameters.md).
 
@@ -33,19 +43,9 @@ Then run it and open http://localhost:8080:
 .venv/bin/python -m hexapod_sim
 ```
 
-It listens on this machine only. Add `--host 0.0.0.0` to allow other machines, and `--port` to change the port.
+It needs the generated meshes. It listens on this machine only. Add `--host 0.0.0.0` to allow other machines, and `--port` to change the port.
 
-| Forward kinematics | Body pose IK |
-|---|---|
-| ![Forward kinematics mode with a tibia limit warning](docs/images/mode_fk.png) | ![Body pose IK mode](docs/images/mode_body.png) |
-
-| Leg patterns | Gait playback |
-|---|---|
-| ![Leg patterns mode at the laydown pose](docs/images/mode_pattern.png) | ![Gait playback mode, tripod gait](docs/images/mode_gait.png) |
-
-| Unreachable feet and limits | Servo speed |
-|---|---|
-| ![Red warnings for unreachable feet and joint limits](docs/images/warning_unreachable.png) | ![Red warnings for servo speed](docs/images/warning_speed.png) |
+To create screenshots of each mode in `docs/images/` (not committed, because they show the meshes), run `scripts/capture_sim_screenshots.py`.
 
 ## Kinematics library
 
@@ -95,22 +95,22 @@ python3 scripts/verify_joints.py
 
 ## Regenerate meshes and parameters
 
-Only needed if the CAD or the estimates change. `refs/` is not tracked.
+`refs/` is not tracked. `makeyourpet_hexapod` is only needed for the cross-check against its published config.
 
 ```bash
-git clone https://github.com/rookidroid/hexapod refs/rookidroid_hexapod
-git -C refs/rookidroid_hexapod checkout 625d150
-python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
+git clone https://github.com/makeyourpet/hexapod refs/makeyourpet_hexapod
+python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt -e src/hexapod_kinematics -e src/hexapod_sim
 
-.venv/bin/python scripts/measure_geometry.py   # compare the model with the STLs
-.venv/bin/python scripts/generate_model.py     # write the meshes and the YAML
-.venv/bin/python scripts/sweep_limits.py       # collision sweep, takes about 11 minutes
-.venv/bin/python scripts/calibrate_leg_collision.py   # refit leg collision capsules (needs hexapod_kinematics)
+.venv/bin/python scripts/generate_model.py            # write meshes/emre and the YAML
+.venv/bin/python scripts/measure_geometry.py          # compare the model with the STLs
+.venv/bin/python scripts/sweep_limits.py              # joint limits from mesh contact
+.venv/bin/python scripts/calibrate_leg_collision.py   # refit leg collision capsules
+.venv/bin/python scripts/check_bays.py                # do the electronics fit?
+.venv/bin/python scripts/power_budget.py              # torque margin, regulators, battery
 ```
 
-`generate_model.py` overwrites the YAML, so change values in the script rather than in the YAML. Limits from the sweep and the capsule radius are entered in the script by hand.
+`generate_model.py` overwrites the YAML, so change values in the script rather than in the YAML. Limits from the sweep and the capsule radii are entered in the script by hand.
 
 ## Licence
 
-GPL-3.0, because the meshes derive from RookiDroid's GPL-3.0 STL files.
-# hexapod_ws
+Our code is GPL-3.0. The STL and MG996R files are not ours and are not covered by it: see [Model files are not in this repo](#model-files-are-not-in-this-repo).

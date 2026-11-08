@@ -128,4 +128,5 @@ class RobotModel:
     def mesh_dir(self) -> pathlib.Path:
         if self.params_path is None:
             raise ValueError('model was not loaded from a file')
-        return pathlib.Path(self.params_path).resolve().parent.parent / 'meshes'
+        subdir = self.raw.get('visual', {}).get('mesh_subdir', '')
+        return pathlib.Path(self.params_path).resolve().parent.parent / 'meshes' / subdir

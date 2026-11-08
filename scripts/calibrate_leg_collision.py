@@ -12,55 +12,27 @@ import trimesh
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import hexapod_cad as cad  # noqa: E402
+import emre_cad as cad  # noqa: E402
+import sweep_limits as sweep  # noqa: E402
 from hexapod_kinematics import RobotModel, link_frames  # noqa: E402
 from hexapod_kinematics.checks import _segment_distance  # noqa: E402
 
 PARAMS = pathlib.Path(__file__).resolve().parents[1] / 'src/hexapod_description/config/robot_parameters.yaml'
 data = yaml.safe_load(PARAMS.read_text())
-SPLIT = 0.060  # m: where the foot side plates end, from foot_top and foot_bottom (60 mm past the pivot)
-data['leg_collision'] = {'femur_radius': 0.0, 'tibia_upper_radius': 0.0, 'tibia_lower_radius': 0.0, 'tibia_split': SPLIT}
-model = RobotModel(data, PARAMS)
+SPLIT = 0.095  # m: below this the tibia is just its bar and foot; above it the shield and servo
+model = sweep.model
 rng = np.random.default_rng(11)
-
-
-def servo_boxes():
-    out = []
-    for x in (5.3, 38.3):
-        box = trimesh.creation.box(extents=(22.8, 25, 12))
-        box.apply_translation((x, 3.7, 0))
-        out.append(box)
-    return out
-
-
-def link_mesh(parts, extra=(), side='right', translate=None):
-    meshes = [m for _, _, m in cad.placed(parts)] + list(extra)
-    merged = trimesh.util.concatenate(meshes)
-    if translate is not None:
-        merged.apply_translation(translate)
-    merged.apply_scale(0.001)
-    return cad.mirror(merged) if side == 'left' else merged
 
 
 class MeshPair:
     def __init__(self, i, j):
         self.i, self.j = i, j
-        self.legs = (model.legs[i], model.legs[j])
-        self.managers = []
-        for leg in self.legs:
-            manager = trimesh.collision.CollisionManager()
-            manager.add_object('coxa', link_mesh(cad.COXA_PARTS, side=leg.side))
-            manager.add_object('femur', link_mesh(cad.FEMUR_PARTS, servo_boxes(), leg.side))
-            manager.add_object('tibia', link_mesh(cad.TIBIA_PARTS, side=leg.side))
-            manager.add_object('foot', link_mesh(cad.FOOT_PARTS, side=leg.side))
-            self.managers.append(manager)
+        self.legs = (sweep.Leg(model.legs[i], 'a_'), sweep.Leg(model.legs[j], 'b_'))
 
     def collide(self, qa, qb):
-        for manager, leg, q in zip(self.managers, self.legs, (qa, qb)):
-            frames = link_frames(model, leg.index, q)
-            for name in ('coxa', 'femur', 'tibia', 'foot'):
-                manager.set_transform(name, frames[name])
-        return self.managers[0].in_collision_other(self.managers[1])
+        self.legs[0].pose(qa)
+        self.legs[1].pose(qb)
+        return self.legs[0].manager.in_collision_other(self.legs[1].manager)
 
 
 def capsule_distances(i, j, qa, qb):
@@ -95,7 +67,7 @@ def contact_angle(check, i, j, femur, tibia):
 
 
 PAIRS = {'right side (1,2)': (0, 1), 'front (1,4)': (0, 3), 'rear (3,6)': (2, 5), 'left side (4,5)': (3, 4)}
-POSES = [(0, 0), (30, -15), (65, 0)]
+POSES = [(46, -31), (0, 0), (60, -20)]
 mesh_pairs = {name: MeshPair(*pair) for name, pair in PAIRS.items()}
 
 print('First mesh contact, degrees of coxa swing per leg toward the neighbour:')
@@ -129,17 +101,16 @@ def predict(rf, ru, rl):
     return np.array([any(r[1][k] - radius[k[0]] - radius[k[1]] < 0 for k in keys) for r in records])
 
 
-# Femur and lower tibia rarely decide contact, so a free fit shrinks them to nothing. Fix them from the
-# parts instead: femur block half-height 11.2 mm, foot tip half-width about 6 mm. Fit only the upper tibia.
-rf, rl = 0.012, 0.006
 best = None
-for ru in np.arange(0.018, 0.0341, 0.001):
-    p = predict(rf, ru, rl)
-    # Prefer few missed contacts: a false alarm costs range, a miss breaks hardware.
-    score = 5 * int((truth & ~p & fit).sum()) + int((~truth & p & fit).sum())
-    if best is None or score < best[0]:
-        best = (score, round(float(ru), 4))
-_, ru = best
+for rf in np.arange(0.016, 0.0401, 0.004):
+    for ru in np.arange(0.014, 0.0361, 0.002):
+        for rl in np.arange(0.004, 0.0161, 0.004):
+            p = predict(rf, ru, rl)
+            # Prefer few missed contacts: a false alarm costs range, a miss breaks hardware.
+            score = 5 * int((truth & ~p & fit).sum()) + int((~truth & p & fit).sum())
+            if best is None or score < best[0]:
+                best = (score, round(float(rf), 4), round(float(ru), 4), round(float(rl), 4))
+_, rf, ru, rl = best
 p = predict(rf, ru, rl)
 print(f'Result: femur {rf * 1000:.0f} mm, tibia upper {ru * 1000:.0f} mm, tibia lower {rl * 1000:.0f} mm')
 for label, mask in (('fit', fit), ('held out', ~fit)):

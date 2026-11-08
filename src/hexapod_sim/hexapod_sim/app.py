@@ -15,7 +15,7 @@ from hexapod_kinematics import (DEFAULT_STEP_HEIGHT, DEFAULT_STEP_LENGTH, DEFAUL
 from .logic import Frame, body_frame, gait_frame, joint_frame, nearest_point_on_polygon, pattern_q, status_html, table_html
 
 MODES = ('Forward kinematics', 'Body pose IK', 'Leg patterns', 'Gait playback')
-COLOURS = {'base': (201, 106, 106), 'coxa': (111, 201, 196), 'femur': (127, 208, 127), 'tibia': (106, 106, 201), 'foot': (40, 40, 40)}
+COLOURS = {'base': (201, 106, 106), 'coxa': (111, 201, 196), 'femur': (127, 208, 127), 'tibia': (106, 106, 201), 'foot': (40, 40, 40), 'servo': (28, 28, 32)}
 GAIT_DT = 0.02
 TICK = 1.0 / 30.0
 
@@ -44,6 +44,8 @@ class HexapodSim:
     # ---- scene ----
     def _setup_scene(self) -> None:
         s = self.server.scene
+        reach = float(np.linalg.norm(self.model.hips[:, :2], axis=1).max()) + self.model.coxa + self.model.femur + self.model.tibia / 2
+        self.view_scale = reach / 0.204
         s.set_up_direction('+z')
         self.server.gui.configure_theme(control_width='large', show_logo=False, show_share_button=False)
         self.server.gui.main_panel.dock_right()
@@ -54,6 +56,9 @@ class HexapodSim:
         directory = self.model.mesh_dir
         base = _load_mesh(directory / 'base_link.stl')
         s.add_mesh_simple('/robot/base', base.vertices, base.faces, color=COLOURS['base'], flat_shading=True)
+        if (directory / 'base_servos.stl').exists():
+            servos = _load_mesh(directory / 'base_servos.stl')
+            s.add_mesh_simple('/robot/base_servos', servos.vertices, servos.faces, color=COLOURS['servo'], flat_shading=True)
         self.link_handles = {}
         cache = {}
         for leg in self.model.legs:
@@ -64,13 +69,19 @@ class HexapodSim:
                 mesh = cache[file]
                 self.link_handles[(leg.index, name)] = s.add_mesh_simple(
                     f'/robot/leg_{leg.id}_{name}', mesh.vertices, mesh.faces, color=COLOURS[name], flat_shading=True)
+                servo_file = directory / f'{name}_servo_{leg.side}.stl'
+                if servo_file.exists():  # a child node, so it follows its link
+                    servo = cache.setdefault(servo_file.stem, _load_mesh(servo_file))
+                    s.add_mesh_simple(f'/robot/leg_{leg.id}_{name}/servo', servo.vertices, servo.faces, color=COLOURS['servo'], flat_shading=True)
         self.com_handle = s.add_icosphere('/com', radius=0.006, color=(230, 120, 0), position=(0.0, 0.0, 0.002))
         self.foot_handles = [s.add_icosphere(f'/foot_marker_{leg.id}', radius=0.005, color=(30, 110, 230)) for leg in self.model.legs]
 
         @self.server.on_client_connect
         def _on_connect(client):
-            client.camera.position = (0.27, -0.33, 0.25)
-            client.camera.look_at = (0.0, 0.0, 0.03)
+            # Same viewpoint for any robot, scaled to its reach.
+            scale = self.view_scale
+            client.camera.position = (0.27 * scale, -0.33 * scale, 0.25 * scale)
+            client.camera.look_at = (0.0, 0.0, 0.03 * scale)
             client.camera.up_direction = (0.0, 0.0, 1.0)
 
     # ---- GUI ----
@@ -110,6 +121,10 @@ class HexapodSim:
             self.start_q = self.frame.q.copy()
         self.dirty = True
 
+    def _slider_range(self, joint: int) -> tuple:
+        """Past the limits by 20 degrees, so the warnings can be seen."""
+        return float(round(np.degrees(self.model.lower[joint]) - 20.0)), float(round(np.degrees(self.model.upper[joint]) + 20.0))
+
     def _setup_fk(self) -> None:
         gui = self.server.gui
         standby = np.degrees(self.model.poses['standby'])
@@ -121,7 +136,7 @@ class HexapodSim:
                 with gui.add_folder(f'Leg {leg.id}: {leg.name}', expand_by_default=leg.index == 0):
                     for j, name in enumerate(JOINT_ORDER):
                         hint = f'Limit {np.degrees(self.model.lower[j]):.0f}° to {np.degrees(self.model.upper[j]):.0f}°. The slider goes further so you can see the warning.'
-                        self.fk_sliders[(leg.index, j)] = self._slider(f'{name} (°)', -90.0, 90.0, 0.5, float(round(standby[j], 1)), hint)
+                        self.fk_sliders[(leg.index, j)] = self._slider(f'{name} (°)', *self._slider_range(j), 0.5, float(round(standby[j], 1)), hint)
 
     def _setup_body(self) -> None:
         panel = self.server.gui.add_folder('Body pose')
@@ -147,7 +162,7 @@ class HexapodSim:
         self.pattern_sliders = {}
         with panel:
             for j, name in enumerate(JOINT_ORDER):
-                self.pattern_sliders[j] = self._slider(f'{name} (°)', -90.0, 90.0, 0.5, float(round(standby[j], 1)))
+                self.pattern_sliders[j] = self._slider(f'{name} (°)', *self._slider_range(j), 0.5, float(round(standby[j], 1)))
             for pose in self.model.poses:
                 button = gui.add_button(f'Pose: {pose}')
                 button.on_click(lambda _e, p=pose: self._on_pattern_pose(p))

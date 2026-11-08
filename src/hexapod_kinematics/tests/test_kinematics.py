@@ -42,8 +42,8 @@ def test_leg_ik_scalar_and_batch_agree(model):
     assert np.allclose(leg_ik(model, np.array([p, p])).q[1], q)
 
 
-def test_neutral_foot_matches_step_1_values(model):
-    assert np.allclose(leg_fk(model, [0, 0, 0]) * 1000, [79.6, 0.0, -83.46], atol=1e-6)
+def test_neutral_foot_is_out_along_the_femur_and_down_the_tibia(model):
+    assert np.allclose(leg_fk(model, [0, 0, 0]), [model.coxa + model.femur, 0.0, -model.tibia])
 
 
 def load_foot_fk(model):

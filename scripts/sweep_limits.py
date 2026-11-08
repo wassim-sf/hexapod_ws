@@ -1,87 +1,127 @@
 #!/usr/bin/env python3
-"""Find mechanical joint limits by sweeping meshes for collisions (printed parts + MG92B body boxes).
+"""Find mechanical joint limits by mesh collision: printed parts plus MG996R body outlines.
 
-Parts that sit flush by design (pin-side plates) get a 0.3 mm test gap so that sliding contact
-does not count as a collision. Horns, screws and wires are not modelled.
+Horns, idlers, rings, screws and wires are left out, because they touch by design or are not modelled.
 """
-import sys, pathlib
-import numpy as np, trimesh
+import pathlib
+import sys
+
+import numpy as np
+import trimesh
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import hexapod_cad as cad
-GAP = 0.3
-def shifted(parts, shifts):
-    out = []
-    for name, rel, m in cad.placed(parts):
-        if name in shifts:
-            m.apply_translation(shifts[name])
-        out.append((name, m))
-    return out
-def box(ext, c):
-    b = trimesh.creation.box(extents=ext); b.apply_translation(c); return b
-# MG92B body (without shaft): 22.8 x 12 x ~25 mm. Case height along the shaft is estimated.
-def femur_set():
-    s = shifted(cad.FEMUR_PARTS, {})
-    for i, x in enumerate((5.3, 38.3)):
-        s.append((f'servo{i}', box((22.8, 25, 12), (x, 3.7, 0))))
+import emre_cad as cad  # noqa: E402
+from hexapod_kinematics import RobotModel, link_frames  # noqa: E402
+
+model = RobotModel.load()
+
+
+def servo_body(t):
+    s = cad.servo_mesh(body_only=True)
+    s.apply_transform(t)
     return s
-COXA_SET = shifted(cad.COXA_PARTS, {'joint_bottom_hip': (0, 0, -GAP), 'joint_bottom_femur': (0, -GAP, 0)})
-FEMUR_SET = femur_set()
-TIBIA_SET = shifted(cad.TIBIA_PARTS, {'foot_bottom': (0, -GAP, 0)}) + [
-    (n, m.apply_translation((0, 0, -cad.TIBIA))) for n, m in shifted(cad.FOOT_PARTS, {})]
-BODY_SET = [('body', trimesh.util.concatenate([m for _, _, m in cad.placed(cad.body_parts())]))]
-for k in range(6):  # coxa servo bodies live in the body
-    a = np.radians(cad.LEGS[k][3]); r = cad.HIP_RADIUS - 5.3
-    b = box((22.8, 12, 25), (r, 0, 24.5)); b.apply_transform(cad.t_rz(cad.LEGS[k][3])); BODY_SET.append((f'coxa_servo{k}', b))
-def world(side, yaw, q):
-    tc, tf_, tt, tfoot = cad.leg_transforms(yaw, q)
-    out = {}
-    for label, parts, t in (('coxa', COXA_SET, tc), ('femur', FEMUR_SET, tf_), ('tibia', TIBIA_SET, tt)):
-        ms = []
-        for n, m in parts:
-            mm = cad.mirror(m) if side == 'left' else m.copy()
-            mm.apply_transform(t); ms.append(mm)
-        out[label] = trimesh.util.concatenate(ms)
-    return out
-BODY_CM = trimesh.collision.CollisionManager()
-BODY_CM.add_object('body', trimesh.util.concatenate([m for _, m in BODY_SET]))
-def collide(leg_meshes, others=None):
-    """Leg links against the body and each other. Body-internal contact is ignored."""
-    cm = trimesh.collision.CollisionManager()
-    for k, v in leg_meshes.items():
-        cm.add_object(k, v)
-    if others:
-        for k, v in others.items():
-            cm.add_object('o_' + k, v)
-    hit, names = cm.in_collision_internal(return_names=True)
-    hit2, names2 = cm.in_collision_other(BODY_CM, return_names=True)
-    return hit or hit2, set(names) | set(names2)
-def sweep(joint_i, sign, side='right', yaw=-90.0, base=(0, 0, 0), maxdeg=120):
+
+
+def scaled(meshes, side='left'):
+    mesh = trimesh.util.concatenate(meshes)
+    mesh.apply_scale(0.001)
+    return cad.mirror(mesh) if side == 'right' else mesh
+
+
+def leg_sets(side):
+    return {
+        'coxa': scaled([cad.placed('Left-coxa-996', cad.COXA_T), servo_body(cad.COXA_SERVO_T)], side),
+        'femur': scaled([cad.placed('Left-femur-996', cad.FEMUR_T)], side),
+        'tibia': scaled([cad.placed(n, t) for n, t in (('Left-tibia', cad.TIBIA_T), ('shield', cad.SHIELD_T), ('ms-holder', cad.FOOT_T), ('rod', cad.FOOT_T))]
+                        + [servo_body(cad.TIBIA_SERVO_T)], side),
+        'foot': scaled([cad.placed('tip', cad.TIP_T)], side),
+    }
+
+
+SETS = {'left': leg_sets('left'), 'right': leg_sets('right')}
+body = [cad.placed(n, t) for _, n, t in cad.body_parts()] + [servo_body(cad.body_servo_t(y)) for *_, y in cad.LEGS]
+BODY = trimesh.collision.CollisionManager()
+BODY.add_object('body', scaled(body))
+ORDER = {'coxa': 0, 'femur': 1, 'tibia': 2, 'foot': 3}
+
+
+class Leg:
+    def __init__(self, leg, tag=''):
+        self.leg = leg
+        self.manager = trimesh.collision.CollisionManager()
+        for name, mesh in SETS[leg.side].items():
+            self.manager.add_object(tag + name, mesh)
+        self.tag = tag
+
+    def pose(self, q):
+        frames = link_frames(model, self.leg.index, q)
+        for name in SETS[self.leg.side]:
+            self.manager.set_transform(self.tag + name, frames[name])
+
+    def contacts(self):
+        """Contact with the body, or between non-adjacent or adjacent links."""
+        hit_b, n_b = self.manager.in_collision_other(BODY, return_names=True)
+        hit_s, n_s = self.manager.in_collision_internal(return_names=True)
+        pairs = {tuple(sorted(p)) for p in n_b} | {tuple(sorted(p)) for p in n_s}
+        return sorted(pairs - {('foot', 'tibia')})  # the tip sits on the rod by design
+
+
+def first_contact(leg, joint, sign, base_q, maxdeg=135):
+    q = np.radians(base_q).astype(float)
+    start = np.degrees(q[joint])
+    obj = Leg(leg)
+    obj.pose(q)
+    if obj.contacts():
+        return None, obj.contacts()
     for d in range(1, maxdeg + 1):
-        q = list(base); q[joint_i] = sign * d
-        hit, names = collide(world(side, yaw, q))
-        if hit:
-            return d - 1, sorted(names)
+        q[joint] = np.radians(start + sign * d)
+        obj.pose(q)
+        c = obj.contacts()
+        if c:
+            return start + sign * (d - 1), c
     return None, []
+
+
+def toward(i, j, angle):
+    wrap = (model.legs[j].yaw - model.legs[i].yaw + np.pi) % (2 * np.pi) - np.pi
+    s = np.sign(wrap)
+    return s * angle, -s * angle
+
+
 if __name__ == '__main__':
-    hit0, names0 = collide(world('right', -90.0, (0, 0, 0)))
-    print('neutral self-collision:', hit0, sorted(names0))
-    for side, yaw in (('right', -90.0), ('left', 90.0)):
-        print(f'--- {side}, yaw {yaw}')
-        for i, jn in enumerate(('coxa', 'femur', 'tibia')):
+    stand = np.degrees(model.poses['standby'])
+    for leg in (model.legs[1], model.legs[4], model.legs[0], model.legs[3]):
+        print(f'\n--- leg_{leg.id} {leg.name}, others at standby {stand.round(1)}')
+        for j, name in enumerate(('coxa', 'femur', 'tibia')):
             for s in (1, -1):
-                d, names = sweep(i, s, side, yaw)
-                print(f'{jn:6s} {"+" if s > 0 else "-"}: first contact after {d} deg  {names}')
-    print('--- tibia with the femur at standby and at extremes')
-    for f in (-75, -30, 30, 65, 75):
+                a, c = first_contact(leg, j, s, stand)
+                print(f'{name:6s} {"+" if s > 0 else "-"}: last clear {a}  {c}')
+    print('\n--- tibia limits at other femur angles (leg_2)')
+    for f in (-55, -30, 0, 30, 60, 90, 110):
+        out = []
         for s in (1, -1):
-            d, names = sweep(2, s, 'right', -90.0, (0, f, 0))
-            print(f'femur {f:4d}: tibia {"+" if s > 0 else "-"}: {d} deg {names}')
-    print('--- neighbouring legs swinging toward each other (leg1 yaw -30 with q, leg2 yaw -90 with -q)')
-    for f, t in ((0, 0), (30, -15), (65, 0)):
-        for d in range(1, 91):
-            a = world('right', -30.0, (-d, f, t)); b = world('right', -90.0, (d, f, t))
-            hit, names = collide(a, b)
-            if hit:
-                print(f'pose f={f},t={t}: contact after {d-1} deg each {sorted(names)}'); break
-        else:
-            print(f'pose f={f},t={t}: no contact up to 90 deg')
+            a, c = first_contact(model.legs[1], 2, s, np.array([0.0, f, -20.0]))
+            out.append(f'{"+" if s > 0 else "-"}: {a} {c[:1]}')
+        print(f'femur {f:4d}: ' + ' | '.join(out))
+    print('\n--- femur limits at other tibia angles (leg_2)')
+    for t in (-100, -60, -30, 0, 40):
+        out = []
+        for s in (1, -1):
+            a, c = first_contact(model.legs[1], 1, s, np.array([0.0, 40.0, t]))
+            out.append(f'{"+" if s > 0 else "-"}: {a} {c[:1]}')
+        print(f'tibia {t:4d}: ' + ' | '.join(out))
+    print('\n--- neighbouring legs swinging toward each other')
+    for pair in model.neighbour_pairs:
+        i, j = pair
+        a, b = Leg(model.legs[i], 'a_'), Leg(model.legs[j], 'b_')
+        for pose in (stand, (0, 0, 0), (0, 60, -20)):
+            found = None
+            for d in range(0, 91):
+                x, y = toward(i, j, np.radians(d))
+                a.pose([x, np.radians(pose[1]), np.radians(pose[2])])
+                b.pose([y, np.radians(pose[1]), np.radians(pose[2])])
+                hit, names = a.manager.in_collision_other(b.manager, return_names=True)
+                if hit:
+                    found = (d, sorted({tuple(sorted(n)) for n in names})[:2])
+                    break
+            print(f'legs {model.legs[i].id},{model.legs[j].id} pose {np.round(pose, 0)}: first contact {found}')

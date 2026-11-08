@@ -31,10 +31,10 @@ def test_raising_a_leg_drops_it_from_the_support_polygon(model):
 
 def test_limit_warning_is_shown_in_red_with_the_reason(model):
     q = model.pose_q('standby')
-    q[1, 2] = np.radians(-60)
+    q[1, 2] = model.lower[2] - np.radians(10)
     frame = joint_frame(model, q)
     assert 'joint_limit' in kinds(frame)
-    assert 'leg_2 (center_right): tibia -60.0°' in status_html(frame)
+    assert f'leg_2 (center_right): tibia {np.degrees(q[1, 2]):.1f}°' in status_html(frame)
     assert 'class="warning"' in status_html(frame)
     assert '#c0141c' in table_html(model, frame.q)
 
@@ -58,7 +58,7 @@ def test_servo_speed_warning_uses_the_move_time(model):
 
 
 def test_body_mode_reports_unreachable_feet(model):
-    frame = body_frame(model, (0.0, 0.0, 0.2), (0.0, 0.0, 0.0))
+    frame = body_frame(model, (0.0, 0.0, 0.3), (0.0, 0.0, 0.0))
     assert 'unreachable' in kinds(frame)
     assert 'unreachable' in status_html(frame)
 

@@ -1,55 +1,71 @@
 #!/usr/bin/env python3
-"""Generate hexapod_description/meshes and config/robot_parameters.yaml from the STL parts.
+"""Generate meshes/emre and config/robot_parameters.yaml from the STL parts (assembly in emre_cad.py).
 
-Masses and inertias are estimates (see docs/robot_parameters.md). Geometry comes from hexapod_cad.py.
+The meshes derive from personal-use files and stay out of git. The YAML only holds numbers.
+Masses and inertias are estimates: see docs/robot_parameters.md.
 """
-import pathlib, sys
-import numpy as np, trimesh, yaml
+import math
+import pathlib
+import sys
+
+import numpy as np
+import trimesh
+import yaml
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import hexapod_cad as cad
+import emre_cad as cad  # noqa: E402
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / 'src/hexapod_description'
+OUT = PKG / 'meshes/emre'
 
-# ---- Estimates: material, print and hardware ----
-RHO_PLA = 1.24e-3         # g/mm3, typical PLA
-RHO_TPU = 1.21e-3         # g/mm3, typical TPU (the README recommends TPU for the foot tips)
-SHELL = 0.8               # mm, walls/top/bottom, 2 perimeters of a 0.4 mm nozzle
-INFILL = 0.20             # the brief's infill
-M_SCREW12, M_NUT, M_SCREW6 = 0.35, 0.12, 0.20   # g, steel, from nominal volume
-M_PIN = 0.59              # g, M4 x 6 steel pin, from volume
-M_BEARING = 0.50          # g, MR74-2RS
-M_SERVO = 13.8            # g, datasheet
-SERVO_EXT = np.array([22.8, 31.0, 12.0])   # mm, length along x, shaft axis, width. Datasheet.
-M_CELL, M_BOARD, M_SWITCH, M_WIRING = 46.0, 30.0, 10.0, 15.0   # g
-# Hardware counts per link. The README only gives totals (180 M2x12, 216 nuts, 36 M2x6, 18 pins, 18 bearings).
-SCREWS_PER_LINK = dict(coxa=8, femur=12, tibia=7)
-BASE_SCREWS = 180 - 6 * sum(SCREWS_PER_LINK.values())
-PINS = dict(coxa=2, tibia=1)
-BEARINGS = dict(femur=2)
-BASE_BEARINGS = 6
+# ---- Print estimate from the brief ----
+RHO_PLA, SHELL_MM, INFILL = 1.24e-3, 1.2, 0.10   # g/mm3; 3 walls of 0.4 mm; 10% infill
+# ---- Parts. EST unless noted ----
+M_SERVO = 55.0            # g, datasheet value (consistent across sources)
+M_SCREW = 0.20            # g, M2 x 8 self-tapping, from nominal volume
+SCREWS_COXA, SCREWS_FEMUR, SCREWS_TIBIA, SCREWS_BODY = 8, 8, 12, 60   # counted from the holes; the guide only says "pack of 100"
+M_SWITCH, M_CAP, M_WIRES_LEG = 1.5, 0.5, 12.0
+FLOOR = -11.5       # top of the bottom cover floor; boards sit 0.3 mm above it in the fit check
+TRAY_TOP = 7.4      # printed Pi tray, just above the 16 mm tall floor boards
+ELECTRONICS = [  # name, grams, size (x, y, z) mm, centre (x, y, z) mm in base_link. Layout checked by scripts/check_bays.py
+    ('lipo_3s_2200', 185.0, (105, 34, 24), (0, 0, -26.3)),
+    ('bec_6v_20a', 60.0, (50, 28, 20), (0, -32.0, -24.3)),
+    ('pca9685_a', 10.0, (62.5, 25.4, 16), (-22.75, 14.2, FLOOR + 8.3)),
+    ('pca9685_b', 10.0, (62.5, 25.4, 16), (-22.75, -14.2, FLOOR + 8.3)),
+    ('esp32', 10.0, (51, 28, 13), (0, 32.0, -20.8)),
+    ('buck_5v', 25.0, (45, 25, 15), (31.5, -14.2, FLOOR + 7.8)),
+    ('pi_tray', 20.0, (92, 60, 2.4), (0, 0, TRAY_TOP - 1.2)),
+    ('pi5', 46.0, (85, 56, 1.5), (0, 0, TRAY_TOP + 5.75)),
+    ('active_cooler', 30.0, (63.5, 42.5, 13.7), (-4.0, 5.3, TRAY_TOP + 13.35)),
+    ('imu', 3.0, (20.3, 15.6, 3.2), (0, 0, TRAY_TOP + 2.1)),
+    ('main_wiring_fuse', 50.0, (100, 60, 15), (0, 0, FLOOR + 8.3)),
+]
 
 
-def printed_mass(m, rho=RHO_PLA):
-    volume, area = abs(m.volume), m.area
-    shell = min(volume, area * SHELL)
-    return rho * (shell + INFILL * (volume - shell))
+def printed_grams(mesh):
+    volume, area = abs(mesh.volume), mesh.area
+    shell = min(volume, area * SHELL_MM)
+    return RHO_PLA * (shell + INFILL * (volume - shell))
 
 
 class Composite:
-    """Rigid-body sum. Internally: grams, millimetres, frame = link frame."""
+    """Rigid-body sum in grams and millimetres."""
+
     def __init__(self):
         self.items = []
 
-    def add_mesh(self, m, grams):
-        props = m.mass_properties
-        inertia = props['inertia'] * (grams / props['mass'])
-        self.items.append((grams, np.array(props['center_mass']), inertia))
-        return grams
+    def add_mesh(self, mesh, grams):
+        props = mesh.mass_properties
+        self.items.append((grams, np.array(props['center_mass']), props['inertia'] * (grams / props['mass'])))
 
-    def add_box(self, grams, ext, center):
-        e = np.asarray(ext, float)
-        i = grams / 12.0 * np.diag([e[1]**2 + e[2]**2, e[0]**2 + e[2]**2, e[0]**2 + e[1]**2])
-        self.items.append((grams, np.asarray(center, float), i))
+    def add_box(self, grams, extents, t):
+        e = np.asarray(extents, float)
+        i = grams / 12.0 * np.diag([e[1] ** 2 + e[2] ** 2, e[0] ** 2 + e[2] ** 2, e[0] ** 2 + e[1] ** 2])
+        r = t[:3, :3]
+        self.items.append((grams, t[:3, 3].copy(), r @ i @ r.T))
+
+    def add_point(self, grams, at):
+        self.items.append((grams, np.asarray(at, float), np.eye(3) * 1e-3))
 
     def total(self):
         mass = sum(g for g, _, _ in self.items)
@@ -61,178 +77,186 @@ class Composite:
         return mass, com, inertia
 
 
+def mirror_y(comp):
+    out = Composite()
+    s = np.diag([1.0, -1.0, 1.0])
+    out.items = [(g, s @ c, s @ i @ s) for g, c, i in comp.items]
+    return out
+
+
 def link_entry(comp):
     grams, com, i = comp.total()
     eig = np.linalg.eigvalsh(i)
     assert eig.min() > 0 and eig[0] + eig[1] >= eig[2] - 1e-9, f'invalid inertia {eig}'
-    k = 1e-9  # g mm2 -> kg m2
-    return {
-        'mass': round(grams / 1000.0, 5),
-        'com': [round(float(v) / 1000.0, 5) for v in com],
-        'inertia': {name: float(f'{i[a, b] * k:.4e}') for name, a, b in
-                    (('ixx', 0, 0), ('ixy', 0, 1), ('ixz', 0, 2), ('iyy', 1, 1), ('iyz', 1, 2), ('izz', 2, 2))},
-    }
+    k = 1e-9
+    return {'mass': round(grams / 1000, 5), 'com': [round(float(v) / 1000, 5) for v in com],
+            'inertia': {n: float(f'{i[a, b] * k:.4e}') for n, a, b in (('ixx', 0, 0), ('ixy', 0, 1), ('ixz', 0, 2), ('iyy', 1, 1), ('iyz', 1, 2), ('izz', 2, 2))}}
 
 
 rows = []
 
 
-def build(parts, label, screws=0, pins=0, bearings=0, servos=(), rho=RHO_PLA, servo_screws=None):
+def build(parts, label, servos=(), screws=0, extra=0.0, extra_at=None):
     comp = Composite()
-    placed = cad.placed(parts)
-    printed = sum(printed_mass(m, rho) for _, _, m in placed)
-    n_servo_screws = len(servos) * 2 if servo_screws is None else servo_screws
-    hardware = screws * (M_SCREW12 + M_NUT) + pins * M_PIN + bearings * M_BEARING + n_servo_screws * M_SCREW6
+    printed = sum(printed_grams(cad.placed(n, t)) for _, n, t in parts)
+    hardware = screws * M_SCREW
     factor = (printed + hardware) / printed
-    for name, rel, m in placed:
-        g = printed_mass(m, rho)
-        comp.add_mesh(m, g * factor)
-        rows.append((label, name, abs(m.volume) / 1e3, m.area / 1e2, g))
-    for center in servos:
-        comp.add_box(M_SERVO, SERVO_EXT, center)
+    for name, stl, t in parts:
+        mesh = cad.placed(stl, t)
+        g = printed_grams(mesh)
+        comp.add_mesh(mesh, g * factor)
+        rows.append((label, name, abs(mesh.volume) / 1e3, mesh.area / 100, g))
     if hardware:
-        rows.append((label, f'hardware ({screws} screw+nut, {pins} pin, {bearings} bearing, {n_servo_screws} M2x6)', 0, 0, hardware))
-    if servos:
-        rows.append((label, f'{len(servos)} x MG92B', 0, 0, len(servos) * M_SERVO))
+        rows.append((label, f'{screws} x M2x8 screw', 0, 0, hardware))
+    for t in servos:
+        centre = transform_point(t, (cad.SHAFT_OFFSET, 0, (cad.GEAR_TOP - cad.FLANGE_TO_BACK) / 2))
+        tt = t.copy()
+        tt[:3, 3] = centre
+        comp.add_box(M_SERVO, (cad.SERVO_L, cad.SERVO_W, cad.GEAR_TOP + cad.FLANGE_TO_BACK), tt)
+        rows.append((label, 'MG996R', 0, 0, M_SERVO))
+    if extra:
+        comp.add_point(extra, extra_at)
+        rows.append((label, 'switch, cap, wiring', 0, 0, extra))
     return comp
 
 
-# Shaft top sits just below the outer plate face: y = 24.16 - 2 = 22.2 mm in the link frame.
-SERVO_Y = 22.2 - SERVO_EXT[1] / 2
-femur = build(cad.FEMUR_PARTS, 'femur', SCREWS_PER_LINK['femur'], bearings=BEARINGS['femur'],
-              servos=[(5.3, SERVO_Y, 0), (38.3, SERVO_Y, 0)])
-coxa = build(cad.COXA_PARTS, 'coxa', SCREWS_PER_LINK['coxa'], pins=PINS['coxa'])
-tibia = build(cad.TIBIA_PARTS, 'tibia', SCREWS_PER_LINK['tibia'], pins=PINS['tibia'])
-foot = build(cad.FOOT_PARTS, 'foot', rho=RHO_TPU)
+def transform_point(t, p):
+    return (t @ np.array([*p, 1.0]))[:3]
 
-# Base: coxa servo shafts share the femur-link geometry; z_top = hip_z + 22.2
-base = build(cad.body_parts(), 'base', BASE_SCREWS, bearings=BASE_BEARINGS, servo_screws=12)
-coxa_servo_z = cad.HIP_Z + 22.2 - SERVO_EXT[1] / 2
+
+# Left-type links; the YAML stores right-side values (the xacro flips y for left legs).
+coxa = mirror_y(build(cad.COXA_PARTS, 'coxa', [cad.COXA_SERVO_T], SCREWS_COXA))
+femur = mirror_y(build(cad.FEMUR_PARTS, 'femur', [], SCREWS_FEMUR))
+tibia = mirror_y(build(cad.TIBIA_PARTS, 'tibia', [cad.TIBIA_SERVO_T], SCREWS_TIBIA, M_SWITCH + M_WIRES_LEG, (0, 0, -60.0)))
+foot = mirror_y(build(cad.FOOT_PARTS, 'foot', [], 0, M_CAP, (0, 0, 4.0)))
+body_parts = list(cad.body_parts())
 for _, _, _, yaw in cad.LEGS:
-    a = np.radians(yaw)
-    r = cad.HIP_RADIUS - 5.3
-    t = cad.rz(yaw)
-    i = M_SERVO / 12.0 * np.diag([SERVO_EXT[2]**2 + SERVO_EXT[1]**2, SERVO_EXT[0]**2 + SERVO_EXT[1]**2, SERVO_EXT[0]**2 + SERVO_EXT[2]**2])
-    base.items.append((M_SERVO, np.array([r * np.cos(a), r * np.sin(a), coxa_servo_z]), t @ i @ t.T))
-rows.append(('base', '6 x MG92B', 0, 0, 6 * M_SERVO))
-# Non-printed parts. Positions are estimates from the photos: cells and switch on the battery plate, board in the hub.
-base.add_box(2 * M_CELL, (65, 37, 18), (0, 0, cad.ARM_HEIGHT + cad.BATTERY_PLATE + 9))
-base.add_box(M_BOARD, (60, 50, 12), (0, 0, 14))
-base.add_box(M_SWITCH, (15, 15, 25), (0, 30, cad.ARM_HEIGHT + cad.BATTERY_PLATE + 12))
-base.add_box(M_WIRING, (100, 100, 15), (0, 0, 14))
-for name, g in (('2 x 18650 cell', 2 * M_CELL), ('controller board', M_BOARD), ('toggle switch', M_SWITCH), ('wiring (controller side)', M_WIRING)):
+    body_parts.append(('idler', 'idler', cad.idler_transform(cad.body_servo_t(yaw))))
+    body_parts.append(('ring', 'ring', cad.ring_transform(cad.body_servo_t(yaw))))
+base = build(body_parts, 'base', [cad.body_servo_t(y) for *_, y in cad.LEGS], SCREWS_BODY)
+for name, g, ext, c in ELECTRONICS:
+    base.add_box(g, ext, cad.transform(np.eye(3), c))
     rows.append(('base', name, 0, 0, g))
 
 
-# ---- Meshes (visual only, metres, decimated) ----
-def write_mesh(mesh, name, faces):
-    m = mesh.simplify_quadric_decimation(face_count=faces) if len(mesh.faces) > faces else mesh.copy()
+# ---- Meshes ----
+def small(mesh, faces):
+    return mesh.simplify_quadric_decimation(face_count=faces) if len(mesh.faces) > faces else mesh
+
+
+def write(mesh, name, faces=10 ** 7):
+    m = small(mesh, faces).copy()
     m.apply_scale(0.001)
-    m.export(PKG / 'meshes' / f'{name}.stl')
-    return len(m.faces)
+    m.export(OUT / f'{name}.stl')
 
 
-(PKG / 'meshes').mkdir(exist_ok=True)
-# Decimate the body part by part so the large flat base plate cannot use up the dome's face budget.
-BODY_FACES = {'body_base': 20000, 'body_top': 8000, 'body_battery': 6000, 'body_head': 12000, 'body_side': 1500, 'body_servo_side': 1500}
+OUT.mkdir(parents=True, exist_ok=True)
+write(trimesh.util.concatenate([small(cad.placed(n, t), 12000) for _, n, t in body_parts]), 'base_link')
+servo_visual = cad.servo_mesh()
+body_servos = []
+for _, _, _, yaw in cad.LEGS:
+    s = servo_visual.copy()
+    s.apply_transform(cad.body_servo_t(yaw))
+    body_servos.append(s)
+write(trimesh.util.concatenate(body_servos), 'base_servos')
+for name, parts, faces in (('coxa', cad.COXA_PARTS, 14000), ('femur', cad.FEMUR_PARTS, 14000), ('tibia', cad.TIBIA_PARTS, 12000), ('foot', cad.FOOT_PARTS, 2000)):
+    mesh = trimesh.util.concatenate([small(cad.placed(n, t), faces) for _, n, t in parts])
+    write(mesh, f'{name}_left')
+    write(cad.mirror(mesh), f'{name}_right')
+for name, t in (('coxa', cad.COXA_SERVO_T), ('tibia', cad.TIBIA_SERVO_T)):
+    s = servo_visual.copy()
+    s.apply_transform(t)
+    write(s, f'{name}_servo_left')
+    write(cad.mirror(s), f'{name}_servo_right')
 
 
-def body_visual():
-    out = []
-    for name, _, m in cad.placed(cad.body_parts()):
-        limit = BODY_FACES[next(k for k in sorted(BODY_FACES, key=len, reverse=True) if name.startswith(k))]
-        out.append(m.simplify_quadric_decimation(face_count=limit) if len(m.faces) > limit else m)
-    return trimesh.util.concatenate(out)
+# ---- Poses ----
+def ik(radial, up):
+    f, t, c = cad.FEMUR, cad.TIBIA, cad.COXA
+    a, b = radial - c, up
+    e = -math.acos((a * a + b * b - f * f - t * t) / (2 * f * t))
+    q3 = e + math.pi / 2
+    q2 = math.atan2(b, a) - math.atan2(t * math.sin(e), f + t * math.cos(e))
+    return [0.0, round(q2, 6), round(q3, 6)]
 
 
-counts = {'base_link': write_mesh(body_visual(), 'base_link', 10 ** 7)}
-for name, parts in (('coxa', cad.COXA_PARTS), ('femur', cad.FEMUR_PARTS), ('tibia', cad.TIBIA_PARTS), ('foot', cad.FOOT_PARTS)):
-    merged = cad.merged(parts)  # leg parts stay at full STL resolution
-    counts[f'{name}_right'] = write_mesh(merged, f'{name}_right', 10 ** 7)
-    counts[f'{name}_left'] = write_mesh(cad.mirror(merged), f'{name}_left', 10 ** 7)
-print('mesh faces', counts)
+STANDBY = ik(120.0, -85.0)   # foot 120 mm out from the hip, 85 mm below: close to the project's MODE_STANDARD for this femur
+LAYDOWN = ik(140.0, -cad.HIP_Z - 42.0)  # body resting on the battery bars
 
-# ---- YAML ----
-C = cad.CROSS_HALF
-
-
-def mm_to_m(v):
-    return round(float(v) * 0.001, 6)
+# ---- Joint limits (rad): servo travel windows intersected with mesh contact from sweep_limits.py ----
+SERVO_CENTER = {'coxa': 0.0, 'femur': 35.2, 'tibia': -21.4}   # femur: hub screw pattern; tibia: knee hub pattern and the servo axis
+LIMITS_DEG = {'coxa': (-55.0, 55.0), 'femur': (-54.0, 95.0), 'tibia': (-90.0, 68.0)}  # tibia stops at -90: contact is at -96, and below -90 the closed-form IK has two answers
+TORQUE = round(11.0 * 9.80665 / 100.0, 4)       # 11 kgf.cm at 6 V
+VELOCITY = round(float(np.radians(60.0)) / 0.14, 3)  # 0.14 s/60 deg at 6 V, no load
+ALSO = {'axis': {'coxa': [0, 0, 1], 'femur': [0, -1, 0], 'tibia': [0, -1, 0]}}
 
 
-mm = 0.001
+def limit(name):
+    lo, hi = LIMITS_DEG[name]
+    return {'axis': ALSO['axis'][name], 'lower': round(math.radians(lo), 6), 'upper': round(math.radians(hi), 6), 'lower_deg': lo, 'upper_deg': hi,
+            'effort': TORQUE, 'velocity': VELOCITY}
 
 
-def box_spec(xmin, xmax, ymin, ymax, zmin, zmax):
-    return {'size': [round((xmax - xmin) * mm, 5), round((ymax - ymin) * mm, 5), round((zmax - zmin) * mm, 5)],
-            'xyz': [round((xmin + xmax) / 2 * mm, 5), round((ymin + ymax) / 2 * mm, 5), round((zmin + zmax) / 2 * mm, 5)]}
+m = lambda v: round(float(v) * 0.001, 6)
 
 
+def box_mm(xmin, xmax, ymin, ymax, zmin, zmax, yaw=0.0):
+    return {'size': [m(xmax - xmin), m(ymax - ymin), m(zmax - zmin)], 'xyz': [m((xmin + xmax) / 2), m((ymin + ymax) / 2), m((zmin + zmax) / 2)], 'yaw': round(yaw, 6)}
+
+
+def hip_box(yaw, r0, r1, half_w, z0, z1):
+    """A box in the leg's radial frame at its hip, expressed in base_link."""
+    a = math.radians(yaw)
+    xy = cad.hip_xy(yaw)
+    c = (r0 + r1) / 2
+    return {'size': [m(r1 - r0), m(2 * half_w), m(z1 - z0)], 'xyz': [m(xy[0] + c * math.cos(a)), m(xy[1] + c * math.sin(a)), m((z0 + z1) / 2)], 'yaw': round(a, 6)}
+
+
+base_boxes = [box_mm(-58.3, 58.3, -38.3, 38.3, 0.0, 16.0), box_mm(-62.0, 68.0, -48.0, 48.0, -14.0, 0.0), box_mm(-70.0, 70.0, -50.0, 50.0, 16.0, 28.2), box_mm(-52.5, 52.5, -24.0, 24.0, -42.0, -14.0)]
+for _, _, _, yaw in cad.LEGS:
+    base_boxes.append(hip_box(yaw, -30.5, 10.1, 10.0, -8.0, 30.0))  # coxa servo body
 legs = []
 for leg_id, name, side, yaw in cad.LEGS:
-    y = np.radians(yaw)
-    legs.append({'id': leg_id, 'name': name, 'side': side, 'mirror': 1 if side == 'right' else -1,
-                 'yaw': round(float(y), 6), 'yaw_deg': yaw,
-                 'x': round(float(cad.HIP_RADIUS * np.cos(y)) * mm, 6), 'y': round(float(cad.HIP_RADIUS * np.sin(y)) * mm, 6)})
-
-EFFORT = round(3.5 * 9.80665 / 100.0, 4)       # 3.5 kgf.cm at 6.0 V, datasheet
-VELOCITY = round(float(np.radians(60.0)) / 0.08, 3)   # 0.08 s/60 deg at 6.0 V, no load, datasheet
-limit = lambda lo, hi: {'lower': round(float(np.radians(lo)), 6), 'upper': round(float(np.radians(hi)), 6),
-                        'lower_deg': lo, 'upper_deg': hi, 'effort': EFFORT, 'velocity': VELOCITY}
-TIBIA_UPPER_RADIUS = 0.025  # from calibrate_leg_collision.py
+    xy = cad.hip_xy(yaw)
+    legs.append({'id': leg_id, 'name': name, 'side': side, 'mirror': 1 if side == 'right' else -1, 'yaw': round(math.radians(yaw), 6), 'yaw_deg': yaw, 'x': m(xy[0]), 'y': m(xy[1])})
+zf = cad.COXA_Z_LOCAL
+coxa_boxes = [box_mm(-12.5, 53.0, -8.0, 12.5, -20.25, -14.25), box_mm(-6.0, 53.0, -8.0, 8.0, 33.75, 39.75), box_mm(24.0, 31.0, -8.0, 8.0, -14.25, 33.75), box_mm(33.0, 53.0, -22.0, 8.0, -10.1, 30.6)]
+femur_boxes = [box_mm(-12.5, 72.5, 19.0, 24.0, -12.5, 25.0), box_mm(-9.5, 67.5, -36.0, -29.0, -7.0, 25.0), box_mm(41.0, 55.0, -29.0, 19.0, 23.0, 29.0)]
+tibia_boxes = [box_mm(-10.1, 30.6, -9.0, 9.0, -14.0, -2.0)]
+# Tibia boxes follow the bar and servo in the rotated tibia frame, so the bar is approximated by the leg line.
+tibia_boxes = [box_mm(-14.0, 14.0, -10.0, 10.0, -30.0, 12.0), box_mm(4.0, 30.0, -20.0, 20.0, -108.0, 16.0), box_mm(-2.0, 14.0, -4.5, 4.5, -98.0, -30.0), box_mm(-1.0, 28.0, -8.5, 8.5, -125.0, -98.0)]
 sections = [
-    ('Identity. RookiDroid "Mochi" variant: the MG92B build in the repo. SI units, radians.',
-     {'robot': {'name': 'hexapod', 'variant': 'rookidroid_mochi', 'source_commit': '625d150e0d0315bf6a364b36b8aa8332ec558935'}}),
-    ('MEASURED from STL. base_link: x forward, y left, z up, origin under the body centre at the base underside.',
-     {'body': {'hip_radius': mm_to_m(cad.HIP_RADIUS), 'hip_z': mm_to_m(cad.HIP_Z), 'arm_height': mm_to_m(cad.ARM_HEIGHT),
-               'across_arm_tips': 0.1836, 'across_flats': 0.16726, 'body_height': round(cad.BODY_HEIGHT * mm, 5)}}),
-    ('MEASURED from STL. coxa/femur match mochi.json; tibia differs by 1.76 mm (mochi.json 0.08522).',
-     {'leg_geometry': {'coxa_length': mm_to_m(cad.COXA), 'femur_length': mm_to_m(cad.FEMUR), 'tibia_length': mm_to_m(cad.TIBIA),
-                       'foot_lateral_offset_not_modelled': round(cad.TIP_Y * mm, 5)}}),
-    ('Leg order follows mochi.json. mirror: right +1, left -1.', {'legs': legs}),
-    ('Axes are in the leg frame (x outward, z up), the same for all six legs. Limits: see docs/robot_parameters.md.\n'
-     '# effort and velocity: MG92B datasheet at 6.0 V (stall torque, no-load speed).',
-     {'joints': {'coxa': {'axis': [0, 0, 1], **limit(-45, 45)},
-                 'femur': {'axis': [0, -1, 0], **limit(-75, 75)},
-                 'tibia': {'axis': [0, -1, 0], **limit(-50, 75)}}}),
-    ('Named poses in radians [coxa, femur, tibia]. standby and laydown are converted from mochi.json postures.',
-     {'poses': {'neutral': [0.0, 0.0, 0.0],
-                'standby': [0.0, round(float(np.radians(30)), 6), round(float(np.radians(-15)), 6)],
-                'laydown': [0.0, round(float(np.radians(65)), 6), 0.0]}}),
-    ('Datasheet values. Sources and conflicts: docs/robot_parameters.md.',
-     {'servo': {'model': 'MG92B', 'mass': M_SERVO * mm, 'stall_torque_5v': round(3.1 * 9.80665 / 100, 4),
-                'stall_torque_6v': EFFORT, 'speed_5v': round(float(np.radians(60) / 0.13), 3), 'speed_6v': VELOCITY,
-                'travel_deg_500_2400us': 160, 'travel_deg_700_2300us': 150}}),
+    ('MakeYourPet-derived hexapod, parts from the Robot Lk package. SI units, radians.',
+     {'robot': {'name': 'hexapod', 'variant': 'emre_robotlk_chipo_mix', 'source': 'refs/emre_hexapod; github.com/makeyourpet/hexapod 7d8fc80'}}),
+    ('Visual meshes are personal-use derivatives: scripts/generate_model.py makes them; they are not in git.',
+     {'visual': {'mesh_subdir': 'emre', 'servo_model': 'placeholder_from_datasheet'}}),
+    ('MEASURED from STL. base_link: x forward, y left, z up, origin at the body centre on the frame underside.',
+     {'body': {'hip_z': m(cad.HIP_Z), 'frame_thickness': m(cad.FRAME_THICKNESS), 'across_x': 0.2054, 'across_y': 0.198, 'body_bottom_z': -0.042, 'top_cover_z': 0.0282}}),
+    ('MEASURED from STL. Published config: COXA_LEN 43; Chipo FEMUR_LEN 60; main TIBIA_LEN 134.',
+     {'leg_geometry': {'coxa_length': m(cad.COXA), 'femur_length': m(cad.FEMUR), 'tibia_length': m(cad.TIBIA)}}),
+    ('Leg order as in earlier steps: right front to rear, then left. mirror: right +1, left -1.', {'legs': legs}),
+    ('Axes are in the leg frame (x outward, z up), the same on all six legs. effort and velocity: MG996R at 6.0 V.',
+     {'joints': {n: limit(n) for n in ('coxa', 'femur', 'tibia')}}),
+    ('Named poses in radians [coxa, femur, tibia].', {'poses': {'neutral': [0.0, 0.0, 0.0], 'standby': STANDBY, 'laydown': LAYDOWN}}),
+    ('Joint angle (deg) when the servo is at its centre pulse. For the hardware interface.',
+     {'servo_center_deg': SERVO_CENTER}),
+    ('Sources and conflicts: docs/robot_parameters.md.',
+     {'servo': {'model': 'MG996R', 'mass': m(M_SERVO), 'stall_torque_4v8': round(9.4 * 9.80665 / 100, 4), 'stall_torque_6v': TORQUE,
+                'speed_4v8': round(float(np.radians(60)) / 0.17, 3), 'speed_6v': VELOCITY, 'stall_current_6v': 2.5, 'running_current_6v': [0.5, 0.9],
+                'travel_deg': 180}}),
     ('ESTIMATED. Right-side leg values in the link frame; the xacro flips y terms for left legs. kg, m, kg.m2.',
-     {'links': {'base': link_entry(base), 'coxa': link_entry(coxa), 'femur': link_entry(femur),
-                'tibia': link_entry(tibia), 'foot': link_entry(foot)}}),
-    ('Simplified shapes fitted to the measured parts (metres). Right-side values.',
-     {'collision': {
-         'base': {'hub': {'radius': 0.064, 'length': mm_to_m(cad.ARM_HEIGHT), 'z': mm_to_m(cad.ARM_HEIGHT / 2)},
-                  'dome': {'radius': 0.0697, 'length': round((cad.BODY_HEIGHT - cad.ARM_HEIGHT) * mm, 5),
-                           'z': round((cad.BODY_HEIGHT + cad.ARM_HEIGHT) / 2 * mm, 5)},
-                  'arm': {'size': [0.0298, 0.0224, mm_to_m(cad.ARM_HEIGHT)], 'radial_center': 0.0769, 'z': mm_to_m(cad.ARM_HEIGHT / 2)}},
-         'coxa': {'plate_top': box_spec(-12.5, 23, -7.5, 7.5, C, C + 3.4),
-                  'plate_bottom': box_spec(-7.95, 23, -7.5, 7.5, -C - 3.6, -C),
-                  'plate_horn_side': box_spec(13, 48.5, C, C + 3.4, -7.5, 7.5),
-                  'plate_pin_side': box_spec(13, 43.95, -C - 3.6, -C, -7.5, 7.5),
-                  'cross': {'x': mm_to_m(cad.COXA / 2), 'radius': round(C * mm, 5), 'length': 0.004}},
-         'femur': {'block': box_spec(-10.5, 54.1, cad.BLOCK_LOW, cad.BLOCK_HIGH, -11.2, 11.2)},
-         'tibia': {'plate_horn_side': box_spec(-7.5, 7.5, cad.BLOCK_LOW + cad.FOOT_WIDTH, cad.BLOCK_LOW + cad.FOOT_WIDTH + 3.4, -60, 14.5),
-                   'plate_pin_side': box_spec(-8, 8, cad.BLOCK_LOW - 3.6, cad.BLOCK_LOW, -60, 8),
-                   'ground_upper': box_spec(-2, 2, cad.TIP_Y - 19.75, cad.TIP_Y + 19.75, -60, -20),
-                   'ground_lower': box_spec(-2, 2, cad.TIP_Y - 8, cad.TIP_Y + 8, -76.46, -60)},
-         'foot': {'radius': 0.006, 'length': 0.009, 'z': 0.006}}}),
-    ('DERIVED. Capsules for the neighbouring-leg check in hexapod_kinematics, fitted to mesh contact by\n'
-     '# scripts/calibrate_leg_collision.py. Metres. Each capsule lies on the leg plane; tibia_split is where the foot plates end.',
-     {'leg_collision': {'femur_radius': 0.012, 'tibia_upper_radius': TIBIA_UPPER_RADIUS, 'tibia_lower_radius': 0.006, 'tibia_split': 0.060}}),
-    ('PLACEHOLDER: the Mochi parts list has no IMU. Position assumed at the body centre, mid-hub.',
-     {'imu': {'xyz': [0.0, 0.0, round(cad.ARM_HEIGHT / 2 * mm, 5)], 'status': 'placeholder'}}),
+     {'links': {'base': link_entry(base), 'coxa': link_entry(coxa), 'femur': link_entry(femur), 'tibia': link_entry(tibia), 'foot': link_entry(foot)}}),
+    ('Simplified boxes fitted to the measured parts. Right-side values; foot is a cylinder.',
+     {'collision': {'base': base_boxes, 'coxa': [mirror_box for mirror_box in coxa_boxes], 'femur': femur_boxes, 'tibia': tibia_boxes,
+                    'foot': {'radius': 0.0045, 'length': 0.009, 'z': 0.0045}}}),
+    ('DERIVED. Capsules for the neighbouring-leg check, fitted by scripts/calibrate_leg_collision.py.',
+     {'leg_collision': {'femur_radius': 0.032, 'tibia_upper_radius': 0.020, 'tibia_lower_radius': 0.004, 'tibia_split': 0.095}}),
+    ('PLACEHOLDER position: on the Pi tray under the Pi, at the body centre. BNO055 or MPU6050, not yet chosen.',
+     {'imu': {'xyz': [0.0, 0.0, 0.0095], 'status': 'placeholder'}}),
 ]
 
 
 def plain(o):
-    """Convert numpy scalars to Python values so YAML stays readable by any consumer."""
     if isinstance(o, dict):
         return {k: plain(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):
@@ -244,28 +268,18 @@ text = ['# Single source of truth for the hexapod model: hexapod_description, th
         '# Generated by scripts/generate_model.py. Provenance of every number: docs/robot_parameters.md.', '']
 for comment, data in sections:
     text.append(f'# {comment}')
-    text.append(yaml.safe_dump(plain(data), sort_keys=False, default_flow_style=None, width=110).rstrip())
+    text.append(yaml.safe_dump(plain(data), sort_keys=False, default_flow_style=None, width=120).rstrip())
     text.append('')
-(PKG / 'config').mkdir(exist_ok=True)
 (PKG / 'config/robot_parameters.yaml').write_text('\n'.join(text))
 
-# ---- Report ----
-print(f"\n{'link':6s} {'part':58s} {'V cm3':>7s} {'A cm2':>7s} {'g':>7s}")
-seen = {}
-for label, name, v, a, g in rows:
-    print(f'{label:6s} {name:58s} {v:7.2f} {a:7.2f} {g:7.2f}')
-leg_total = 0
-for n, comp in (('base', base), ('coxa', coxa), ('femur', femur), ('tibia', tibia), ('foot', foot)):
+if '-v' in sys.argv:
+    print(f"{'link':6s} {'part':24s} {'V cm3':>7s} {'A cm2':>7s} {'g':>7s}")
+    for label, name, v, a, g in rows:
+        print(f'{label:6s} {name:24s} {v:7.2f} {a:7.2f} {g:7.2f}')
+leg_total = 0.0
+for name, comp in (('base', base), ('coxa', coxa), ('femur', femur), ('tibia', tibia), ('foot', foot)):
     g, c, _ = comp.total()
-    print(f'TOTAL {n:6s} {g:8.1f} g  com mm {np.round(c, 1)}')
-    if n != 'base':
+    print(f'TOTAL {name:6s} {g:8.1f} g  com mm {np.round(c, 1)}')
+    if name != 'base':
         leg_total += g
-total = base.total()[0] + 6 * leg_total
-print(f'one leg {leg_total:.1f} g, robot {total:.1f} g, base servo count 6, femur servo count 12')
-g = 9.80665
-tip_reach = cad.COXA + cad.FEMUR * np.cos(np.radians(30)) + cad.TIBIA * np.sin(np.radians(15))
-print(f'standby foot: radial {tip_reach:.1f} mm from hip, {cad.TIBIA * np.cos(np.radians(15)) - cad.FEMUR * np.sin(np.radians(30)):.1f} mm below hip')
-femur_arm = cad.FEMUR * np.cos(np.radians(30)) + cad.TIBIA * np.sin(np.radians(15))
-tibia_arm = cad.TIBIA * np.sin(np.radians(15))
-load = total / 1000 * g / 3
-print(f'static tripod load per foot {load:.2f} N; femur torque {load * femur_arm / 1000:.3f} N.m; tibia torque {load * tibia_arm / 1000:.3f} N.m; stall 6 V {EFFORT} N.m')
+print(f'one leg {leg_total:.1f} g, robot {base.total()[0] + 6 * leg_total:.1f} g, standby {np.degrees(STANDBY).round(1)}, laydown {np.degrees(LAYDOWN).round(1)}')

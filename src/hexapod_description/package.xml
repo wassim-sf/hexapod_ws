@@ -3,9 +3,8 @@
 <package format="3">
   <name>hexapod_description</name>
   <version>0.1.0</version>
-  <description>URDF description of the 18-DOF RookiDroid Mochi hexapod (MG92B servos)</description>
-  <maintainer email="todo@example.com">hexapod project</maintainer>
-  <!-- The meshes derive from RookiDroid's GPL-3.0 STL files. -->
+  <description>URDF description of the 18-DOF hexapod (MG996R servos)</description>
+  <maintainer email="sifi.mohamed.wassim@gmail.com">Mohamed Wassim SIFI</maintainer>
   <license>GPL-3.0-only</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

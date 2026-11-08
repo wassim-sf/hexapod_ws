@@ -1,18 +1,19 @@
 <?xml version="1.0"?>
-<!-- 18-DOF hexapod (RookiDroid Mochi, MG92B). Every number comes from config/robot_parameters.yaml.
+<!-- 18-DOF hexapod (MG996R, parts from refs/emre_hexapod). Every number comes from config/robot_parameters.yaml.
      Each leg frame is rotated about z from base_link, so x points outward and z up on all six legs.
      Joint axes are the same in every leg frame: coxa +z, femur -y (+ lifts the foot), tibia -y (+ swings the foot out).
      Left legs mirror only the bodies (meshes, centre of mass, inertia, collision), through sign = -1. -->
 <robot name="hexapod" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <xacro:property name="p" value="${xacro.load_yaml('$(find hexapod_description)/config/robot_parameters.yaml')}"/>
-  <xacro:property name="mesh_dir" value="package://hexapod_description/meshes"/>
+  <xacro:property name="mesh_dir" value="package://hexapod_description/meshes/${p['visual']['mesh_subdir']}"/>
 
   <material name="body_red"><color rgba="0.79 0.42 0.42 1"/></material>
   <material name="coxa_teal"><color rgba="0.44 0.79 0.77 1"/></material>
   <material name="femur_green"><color rgba="0.50 0.82 0.50 1"/></material>
   <material name="tibia_blue"><color rgba="0.42 0.42 0.79 1"/></material>
   <material name="foot_black"><color rgba="0.15 0.15 0.15 1"/></material>
+  <material name="servo_black"><color rgba="0.08 0.08 0.09 1"/></material>
 
   <xacro:macro name="inertial_block" params="d sign">
     <inertial>
@@ -25,41 +26,29 @@
 
   <xacro:macro name="box_collision" params="s sign">
     <collision>
-      <origin xyz="${s['xyz'][0]} ${s['xyz'][1] * sign} ${s['xyz'][2]}" rpy="0 0 0"/>
+      <origin xyz="${s['xyz'][0]} ${s['xyz'][1] * sign} ${s['xyz'][2]}" rpy="0 0 ${s['yaw'] * sign}"/>
       <geometry><box size="${s['size'][0]} ${s['size'][1]} ${s['size'][2]}"/></geometry>
     </collision>
   </xacro:macro>
 
-  <!-- Body arm collision box, rotated out to the leg's yaw -->
-  <xacro:macro name="arm_collision" params="leg_index">
-    <xacro:property name="yaw" value="${p['legs'][leg_index]['yaw']}"/>
-    <xacro:property name="a" value="${p['collision']['base']['arm']}"/>
-    <collision>
-      <origin xyz="${a['radial_center'] * cos(yaw)} ${a['radial_center'] * sin(yaw)} ${a['z']}" rpy="0 0 ${yaw}"/>
-      <geometry><box size="${a['size'][0]} ${a['size'][1]} ${a['size'][2]}"/></geometry>
-    </collision>
+  <!-- A list of boxes from the YAML. Recursive, because the number of boxes differs per link. -->
+  <xacro:macro name="box_list" params="items sign index:=0">
+    <xacro:if value="${index &lt; len(items)}">
+      <xacro:box_collision s="${items[index]}" sign="${sign}"/>
+      <xacro:box_list items="${items}" sign="${sign}" index="${index + 1}"/>
+    </xacro:if>
   </xacro:macro>
 
   <link name="base_link">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry><mesh filename="${mesh_dir}/base_link.stl"/></geometry>
       <material name="body_red"/>
     </visual>
-    <collision>
-      <origin xyz="0 0 ${p['collision']['base']['hub']['z']}" rpy="0 0 0"/>
-      <geometry><cylinder radius="${p['collision']['base']['hub']['radius']}" length="${p['collision']['base']['hub']['length']}"/></geometry>
-    </collision>
-    <collision>
-      <origin xyz="0 0 ${p['collision']['base']['dome']['z']}" rpy="0 0 0"/>
-      <geometry><cylinder radius="${p['collision']['base']['dome']['radius']}" length="${p['collision']['base']['dome']['length']}"/></geometry>
-    </collision>
-    <xacro:arm_collision leg_index="0"/>
-    <xacro:arm_collision leg_index="1"/>
-    <xacro:arm_collision leg_index="2"/>
-    <xacro:arm_collision leg_index="3"/>
-    <xacro:arm_collision leg_index="4"/>
-    <xacro:arm_collision leg_index="5"/>
+    <visual>
+      <geometry><mesh filename="${mesh_dir}/base_servos.stl"/></geometry>
+      <material name="servo_black"/>
+    </visual>
+    <xacro:box_list items="${p['collision']['base']}" sign="1"/>
     <xacro:inertial_block d="${p['links']['base']}" sign="1"/>
   </link>
 
@@ -102,14 +91,11 @@
         <geometry><mesh filename="${mesh_dir}/coxa_${side}.stl"/></geometry>
         <material name="coxa_teal"/>
       </visual>
-      <xacro:box_collision s="${col['coxa']['plate_top']}" sign="1"/>
-      <xacro:box_collision s="${col['coxa']['plate_bottom']}" sign="1"/>
-      <xacro:box_collision s="${col['coxa']['plate_horn_side']}" sign="${sign}"/>
-      <xacro:box_collision s="${col['coxa']['plate_pin_side']}" sign="${sign}"/>
-      <collision>
-        <origin xyz="${col['coxa']['cross']['x']} 0 0" rpy="0 ${pi / 2} 0"/>
-        <geometry><cylinder radius="${col['coxa']['cross']['radius']}" length="${col['coxa']['cross']['length']}"/></geometry>
-      </collision>
+      <visual>
+        <geometry><mesh filename="${mesh_dir}/coxa_servo_${side}.stl"/></geometry>
+        <material name="servo_black"/>
+      </visual>
+      <xacro:box_list items="${col['coxa']}" sign="${sign}"/>
       <xacro:inertial_block d="${p['links']['coxa']}" sign="${sign}"/>
     </link>
 
@@ -121,7 +107,7 @@
         <geometry><mesh filename="${mesh_dir}/femur_${side}.stl"/></geometry>
         <material name="femur_green"/>
       </visual>
-      <xacro:box_collision s="${col['femur']['block']}" sign="${sign}"/>
+      <xacro:box_list items="${col['femur']}" sign="${sign}"/>
       <xacro:inertial_block d="${p['links']['femur']}" sign="${sign}"/>
     </link>
 
@@ -133,10 +119,11 @@
         <geometry><mesh filename="${mesh_dir}/tibia_${side}.stl"/></geometry>
         <material name="tibia_blue"/>
       </visual>
-      <xacro:box_collision s="${col['tibia']['plate_horn_side']}" sign="${sign}"/>
-      <xacro:box_collision s="${col['tibia']['plate_pin_side']}" sign="${sign}"/>
-      <xacro:box_collision s="${col['tibia']['ground_upper']}" sign="${sign}"/>
-      <xacro:box_collision s="${col['tibia']['ground_lower']}" sign="${sign}"/>
+      <visual>
+        <geometry><mesh filename="${mesh_dir}/tibia_servo_${side}.stl"/></geometry>
+        <material name="servo_black"/>
+      </visual>
+      <xacro:box_list items="${col['tibia']}" sign="${sign}"/>
       <xacro:inertial_block d="${p['links']['tibia']}" sign="${sign}"/>
     </link>
 
