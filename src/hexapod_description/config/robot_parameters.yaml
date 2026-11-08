@@ -53,7 +53,7 @@ joints:
 poses:
   neutral: [0.0, 0.0, 0.0]
   standby: [0.0, 0.806863, -0.53702]
-  laydown: [0.0, 1.343804, -0.665964]
+  laydown: [0.0, 1.650808, -0.989268]
 
 # Joint angle (deg) when the servo is at its centre pulse. For the hardware interface.
 servo_center_deg: {coxa: 0.0, femur: 35.2, tibia: -21.4}
@@ -167,12 +167,16 @@ collision:
 # DERIVED. Capsules for the neighbouring-leg check, fitted by scripts/calibrate_leg_collision.py.
 leg_collision: {femur_radius: 0.032, tibia_upper_radius: 0.02, tibia_lower_radius: 0.004, tibia_split: 0.095}
 
+# DERIVED. Capsules for the tibia and foot against the body boxes (collision.base), fitted by scripts/calibrate_body_collision.py.
+body_collision: {tibia_radius: 0.0045, foot_radius: 0.0045, tibia_split: 0.095}
+
 # Foot contact: one microswitch per foot, pressed when the rod rises rod_travel into the ms-holder. esp32_gpio is by leg id.
 # ESTIMATED for simulation, in N and s: contact counts above sim_force_threshold, clears below sim_release_force, and reports after sim_delay.
 foot_contact:
   rod_travel: 0.001
   update_rate_hz: 100
   topic: foot_contact/leg_{id}
+  raw_topic: foot_contact_raw/leg_{id}
   esp32_gpio: {1: 18, 2: 19, 3: 23, 4: 25, 5: 26, 6: 27}
   wiring: C to GPIO with INPUT_PULLUP, NO to GND, NC unused; pressed reads LOW
   sim_force_threshold: 1.5

@@ -186,7 +186,7 @@ def ik(radial, up):
 
 
 STANDBY = ik(120.0, -85.0)   # foot 120 mm out from the hip, 85 mm below: close to the project's MODE_STANDARD for this femur
-LAYDOWN = ik(140.0, -cad.HIP_Z - 42.0)  # body resting on the battery bars
+LAYDOWN = ik(120.0, -cad.HIP_Z - 42.0)  # body resting on the battery bars, feet where they are at standby
 
 # ---- Joint limits (rad): servo travel windows intersected with mesh contact from sweep_limits.py ----
 SERVO_CENTER = {'coxa': 0.0, 'femur': 35.2, 'tibia': -21.4}   # femur: hub screw pattern; tibia: knee hub pattern and the servo axis
@@ -256,9 +256,11 @@ sections = [
                     'foot': {'radius': 0.0045, 'length': 0.009, 'z': 0.0045}}}),
     ('DERIVED. Capsules for the neighbouring-leg check, fitted by scripts/calibrate_leg_collision.py.',
      {'leg_collision': {'femur_radius': 0.032, 'tibia_upper_radius': 0.020, 'tibia_lower_radius': 0.004, 'tibia_split': 0.095}}),
+    ('DERIVED. Capsules for the tibia and foot against the body boxes (collision.base), fitted by scripts/calibrate_body_collision.py.',
+     {'body_collision': {'tibia_radius': 0.0045, 'foot_radius': 0.0045, 'tibia_split': 0.095}}),
     ('Foot contact: one microswitch per foot, pressed when the rod rises rod_travel into the ms-holder. esp32_gpio is by leg id.\n'
      '# ESTIMATED for simulation, in N and s: contact counts above sim_force_threshold, clears below sim_release_force, and reports after sim_delay.',
-     {'foot_contact': {'rod_travel': m(cad.ROD_TRAVEL), 'update_rate_hz': 100, 'topic': 'foot_contact/leg_{id}', 'esp32_gpio': {1: 18, 2: 19, 3: 23, 4: 25, 5: 26, 6: 27},
+     {'foot_contact': {'rod_travel': m(cad.ROD_TRAVEL), 'update_rate_hz': 100, 'topic': 'foot_contact/leg_{id}', 'raw_topic': 'foot_contact_raw/leg_{id}', 'esp32_gpio': {1: 18, 2: 19, 3: 23, 4: 25, 5: 26, 6: 27},
                        'wiring': 'C to GPIO with INPUT_PULLUP, NO to GND, NC unused; pressed reads LOW',
                        'sim_force_threshold': 1.5, 'sim_release_force': 0.5, 'sim_delay': 0.01}}),
     ('Other ESP32 pins. Servo power is off unless servo_power_gpio is driven HIGH; PCA9685 OE is active low, with an external pull-up keeping outputs off at boot.',

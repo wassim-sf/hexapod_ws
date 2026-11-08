@@ -1,0 +1,7 @@
+# Simulated sensors. Noise is white, from MPU-6050 datasheet densities at a 100 Hz update.
+imu:
+  update_rate: 100
+  gyro_noise_stddev: 0.00087     # rad/s: 0.005 deg/s/rtHz x sqrt(100)
+  accel_noise_stddev: 0.0392     # m/s2: 400 ug/rtHz x sqrt(100)
+ground_truth:
+  update_rate: 100

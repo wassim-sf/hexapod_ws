@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<!-- Simulation additions: ros2_control with effort commands, IMU noise, and ground truth for metrics. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:property name="servo" value="${xacro.load_yaml('$(find hexapod_description)/config/servo_model.yaml')['servo_model']}"/>
+  <xacro:property name="sensors" value="${xacro.load_yaml('$(find hexapod_description)/config/sim_sensors.yaml')}"/>
+
+  <xacro:macro name="sim_joint" params="name q">
+    <joint name="${name}">
+      <command_interface name="effort"/>
+      <state_interface name="position"><param name="initial_value">${q}</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+  <xacro:macro name="sim_leg" params="id">
+    <xacro:sim_joint name="leg_${id}_coxa" q="${p['poses']['laydown'][0]}"/>
+    <xacro:sim_joint name="leg_${id}_femur" q="${p['poses']['laydown'][1]}"/>
+    <xacro:sim_joint name="leg_${id}_tibia" q="${p['poses']['laydown'][2]}"/>
+  </xacro:macro>
+
+  <ros2_control name="hexapod" type="system">
+    <hardware><plugin>gz_ros2_control/GazeboSimSystem</plugin></hardware>
+    <xacro:sim_leg id="1"/>
+    <xacro:sim_leg id="2"/>
+    <xacro:sim_leg id="3"/>
+    <xacro:sim_leg id="4"/>
+    <xacro:sim_leg id="5"/>
+    <xacro:sim_leg id="6"/>
+  </ros2_control>
+
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg controllers_file)</parameters>
+    </plugin>
+    <!-- Metrics only. No controller may subscribe to this. -->
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odom_topic>ground_truth/odom</odom_topic>
+      <odom_publish_frequency>${sensors['ground_truth']['update_rate']}</odom_publish_frequency>
+      <dimensions>3</dimensions>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="imu_link">
+    <sensor name="imu" type="imu">
+      <always_on>true</always_on>
+      <update_rate>${sensors['imu']['update_rate']}</update_rate>
+      <topic>imu</topic>
+      <gz_frame_id>imu_link</gz_frame_id>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0</mean><stddev>${sensors['imu']['gyro_noise_stddev']}</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>${sensors['imu']['gyro_noise_stddev']}</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>${sensors['imu']['gyro_noise_stddev']}</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0</mean><stddev>${sensors['imu']['accel_noise_stddev']}</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>${sensors['imu']['accel_noise_stddev']}</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>${sensors['imu']['accel_noise_stddev']}</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+</robot>

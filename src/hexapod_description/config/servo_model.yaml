@@ -1,0 +1,13 @@
+# MG996R servo model for simulation. Step 4 randomizes these values. Datasheet stall torque and speed come from
+# robot_parameters.yaml; the scales here change them without copying them. See docs/servo_model.md.
+servo_model:
+  stall_torque_scale: 1.0     # multiplies the YAML stall torque (6 V)
+  speed_scale: 1.0            # multiplies the YAML no-load speed (6 V)
+  kp: 12.0                    # N.m/rad. Stall is reached at about 5 deg of error
+  kd: 0.10                    # N.m.s/rad
+  response_tau: 0.04          # s, first-order lag on the target (electronics and gear train)
+  command_delay: 0.0          # s, transport delay before a command reaches the servo
+  deadband: 0.0               # rad, no drive torque inside this error
+  joint_damping: 0.02         # N.m.s/rad, passive gear-train damping in the joint
+  joint_friction: 0.02        # N.m, passive friction in the joint
+  update_rate: 500            # Hz, ros2_control loop

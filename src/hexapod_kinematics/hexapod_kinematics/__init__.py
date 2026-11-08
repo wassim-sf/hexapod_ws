@@ -1,7 +1,7 @@
 """Kinematics, gaits and stability for the 18-DOF hexapod. Pure Python + numpy, no ROS."""
 from .body_ik import BodyPoseResult, body_pose_ik, nominal_stance
-from .checks import (JOINT_LIMIT, LEG_COLLISION, SERVO_SPEED, TOO_FEW_FEET, UNREACHABLE, UNSTABLE, Issue,
-                     check_joint_limits, check_leg_collisions, check_pose, check_reachable, check_servo_speed,
+from .checks import (BODY_COLLISION, JOINT_LIMIT, LEG_COLLISION, SERVO_SPEED, TOO_FEW_FEET, UNREACHABLE, UNSTABLE, Issue,
+                     body_clearances, check_body_collisions, check_joint_limits, check_leg_collisions, check_pose, check_reachable, check_servo_speed,
                      leg_capsules, leg_clearances)
 from .export import csv_header, write_csv
 from .gait import (DEFAULT_STEP_HEIGHT, DEFAULT_STEP_LENGTH, DEFAULTS, PHASES, GaitGenerator, GaitParams, GaitSample, GaitTrajectory, VelocityCommand,

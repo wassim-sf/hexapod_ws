@@ -1,0 +1,5 @@
+<library path="servo_model_controller">
+  <class name="hexapod_gazebo/ServoModelController" type="hexapod_gazebo::ServoModelController" base_class_type="controller_interface::ControllerInterface">
+    <description>The one command path: 18 position targets on /joint_commands, through an MG996R servo model, to joint efforts.</description>
+  </class>
+</library>

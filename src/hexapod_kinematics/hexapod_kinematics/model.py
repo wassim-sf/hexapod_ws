@@ -101,6 +101,9 @@ class RobotModel:
             n: LinkInertial(float(links[n]['mass']), np.array(links[n]['com'], float)) for n in LEG_LINKS}
         self.total_mass = self.base_inertial.mass + len(self.legs) * sum(i.mass for i in self.link_inertials.values())
         self.leg_collision = dict(data['leg_collision'])
+        self.body_collision = dict(data['body_collision'])
+        self.body_boxes = [(np.array(b['xyz'], float), np.array(b['size'], float) / 2.0, np.cos(b['yaw']), np.sin(b['yaw']))
+                           for b in data['collision']['base']]
         self.hips = np.array([leg.hip for leg in self.legs])
         self.yaws = np.array([leg.yaw for leg in self.legs])
         # Neighbours follow the ring of leg yaws, so pairs are never listed by hand.

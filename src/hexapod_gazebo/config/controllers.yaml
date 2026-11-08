@@ -1,0 +1,11 @@
+# Loaded by gz_ros2_control. servo_model_controller's numbers are added at launch from servo_model.yaml.
+controller_manager:
+  ros__parameters:
+    update_rate: 500
+    use_sim_time: true
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    servo_model_controller:
+      type: hexapod_gazebo/ServoModelController
+    debug_trajectory_controller:   # debugging only, never started by the default launch
+      type: joint_trajectory_controller/JointTrajectoryController

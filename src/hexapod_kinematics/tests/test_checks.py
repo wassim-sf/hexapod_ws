@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from hexapod_kinematics import (JOINT_LIMIT, JOINT_ORDER, LEG_COLLISION, SERVO_SPEED, UNREACHABLE, check_joint_limits, check_leg_collisions,
+from hexapod_kinematics import (BODY_COLLISION, JOINT_LIMIT, JOINT_ORDER, check_body_collisions, LEG_COLLISION, SERVO_SPEED, UNREACHABLE, check_joint_limits, check_leg_collisions,
                                 check_pose, check_reachable, check_servo_speed, feet_ik, leg_ik)
 
 
@@ -113,3 +113,16 @@ def test_check_pose_combines_everything(model):
     b[3, 2] = model.lower[2] - 0.1
     kinds = {i.kind for i in check_pose(model, b, previous_q=a, dt=0.01)}
     assert {LEG_COLLISION, JOINT_LIMIT, SERVO_SPEED} <= kinds
+
+
+def test_standing_poses_clear_the_body(model):
+    for name in model.poses:
+        assert check_body_collisions(model, model.pose_q(name)) == []
+
+
+def test_foot_under_the_body_is_detected_with_its_leg(model):
+    q = model.pose_q('standby')
+    q[1, 1], q[1, 2] = np.radians(-40), np.radians(-70)
+    issues = check_body_collisions(model, q)
+    assert [i.leg for i in issues] == [2]
+    assert issues[0].kind == BODY_COLLISION and 'hits the body' in issues[0].message

@@ -1,0 +1,22 @@
+hexapod_controller:
+  ros__parameters:
+    use_sim_time: true
+    rate: 50.0               # Hz. Fixed by the command path; do not change per controller.
+    gait: tripod             # tripod | ripple | wave
+    step_length: 0.050       # m, largest foot travel during one stance
+    step_height: 0.020       # m
+    tripod_cycle_period: 1.6 # s
+    tripod_duty_factor: 0.55
+    ripple_cycle_period: 2.4
+    ripple_duty_factor: 0.70
+    wave_cycle_period: 4.8
+    wave_duty_factor: 0.85
+    body_offset: 0.0         # m, body height relative to the standby pose
+    stand_duration: 3.0      # s, laydown to standby
+    sit_duration: 3.0        # s
+    autostart: true          # stand up as soon as the servos are listening
+    cmd_timeout: 0.5         # s without /cmd_vel means zero velocity
+    max_linear_accel: 0.10   # m/s2
+    max_yaw_accel: 0.50      # rad/s2
+    violation_limit: 5       # violations within violation_window stop walking
+    violation_window: 1.0    # s

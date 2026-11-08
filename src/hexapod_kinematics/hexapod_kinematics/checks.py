@@ -11,6 +11,7 @@ from .model import JOINT_ORDER, RobotModel
 UNREACHABLE = 'unreachable'
 JOINT_LIMIT = 'joint_limit'
 LEG_COLLISION = 'leg_collision'
+BODY_COLLISION = 'body_collision'
 SERVO_SPEED = 'servo_speed'
 TOO_FEW_FEET = 'too_few_feet'
 UNSTABLE = 'unstable'
@@ -122,6 +123,51 @@ def check_leg_collisions(model: RobotModel, q) -> list:
     return issues
 
 
+def body_capsules(model: RobotModel, leg_index: int, q) -> list:
+    """Capsules (name, start, end, radius) for the parts of a leg that can swing under or into the body."""
+    frames = link_frames(model, leg_index, q)
+    c = model.body_collision
+    split = float(c['tibia_split'])
+
+    def point(xyz):
+        return (frames['tibia'] @ np.array([*xyz, 1.0]))[:3]
+
+    return [('tibia', point((0.0, 0.0, 0.0)), point((0.0, 0.0, -split)), float(c['tibia_radius'])),
+            ('foot', point((0.0, 0.0, -split)), point((0.0, 0.0, -model.tibia)), float(c['foot_radius']))]
+
+
+def _point_box_distance(points: np.ndarray, box) -> np.ndarray:
+    """Distance from points (n, 3) to a box given as (centre, half extents, cos yaw, sin yaw)."""
+    centre, half, cy, sy = box
+    d = points - centre
+    local = np.stack((cy * d[:, 0] + sy * d[:, 1], -sy * d[:, 0] + cy * d[:, 1], d[:, 2]), axis=1)
+    return np.linalg.norm(np.maximum(np.abs(local) - half, 0.0), axis=1)
+
+
+def body_clearances(model: RobotModel, q) -> dict:
+    """Smallest gap in metres between each leg's tibia and foot capsules and the body boxes (negative means overlap)."""
+    q = np.asarray(q, float)
+    out = {}
+    for leg in model.legs:
+        best = np.inf
+        for _, start, end, radius in body_capsules(model, leg.index, q[leg.index]):
+            points = start + np.linspace(0.0, 1.0, 13)[:, None] * (end - start)
+            for box in model.body_boxes:
+                best = min(best, float(_point_box_distance(points, box).min()) - radius)
+        out[leg.id] = best
+    return out
+
+
+def check_body_collisions(model: RobotModel, q) -> list:
+    """A tibia or foot swinging into or under the body. Coxa and femur contact is prevented by the joint limits."""
+    issues = []
+    for leg_id, gap in body_clearances(model, q).items():
+        if gap < 0.0:
+            leg = model.legs[leg_id - 1]
+            issues.append(Issue(BODY_COLLISION, f'{leg.label}: tibia or foot hits the body, overlap {-gap * 1000:.1f} mm', leg=leg.id, value=float(gap)))
+    return issues
+
+
 def check_servo_speed(model: RobotModel, q_from, q_to, dt: float) -> list:
     """Compare the speed needed to move between two poses in dt with the YAML joint velocity."""
     if dt <= 0.0:
@@ -145,6 +191,7 @@ def check_pose(model: RobotModel, q, solution: IKSolution | None = None, previou
         issues += check_reachable(model, solution)
     issues += check_joint_limits(model, q)
     issues += check_leg_collisions(model, q)
+    issues += check_body_collisions(model, q)
     if previous_q is not None and dt is not None:
         issues += check_servo_speed(model, previous_q, q, dt)
     return issues

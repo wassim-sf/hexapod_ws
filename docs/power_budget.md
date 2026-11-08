@@ -83,7 +83,7 @@ The switch is on the BEC's input, so at stall it carries about 27 A, not 45 A. T
 | Size, mass | About 28 x 28 x 25 mm, 35 g | Not verified; needs a heatsink | 23 x 16 mm, a few grams |
 | Main drawback | Coil draws power constantly, and contacts wear | Bulk, heat, cost | Lifts the BEC's ground off the ESP32's when off, sending current through signal wires |
 
-**Why A:** it's simple, cheap and fits. It carries about 7 A while walking and about 27 A only briefly in a stall, far under its 80 A nameplate.
+**Why A:** it's simple, cheap and fits. It carries about 7 A while walking and about 27 A only briefly in a stall, far under its 80 A nameplate. Both figures are **battery-side** current at 11.1 V, because the switch is on the BEC's input. The same walking load is about 11 A on the 6 V servo side (66 W, plus 10% regulator loss, is about 6.6 A at the pack), and the stall load is 45 A at 6 V. The 7.5 A pack figure above also includes the Pi and controllers, which don't pass through the relay.
 
 **Check before relying on A:**
 

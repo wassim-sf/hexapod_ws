@@ -1,0 +1,27 @@
+# Debugging only. Not part of the command path: never started by the default launch, and nothing in the stack publishes to it.
+debug_trajectory_controller:
+  ros__parameters:
+    use_sim_time: true
+    joints: [leg_1_coxa, leg_1_femur, leg_1_tibia, leg_2_coxa, leg_2_femur, leg_2_tibia, leg_3_coxa, leg_3_femur, leg_3_tibia,
+             leg_4_coxa, leg_4_femur, leg_4_tibia, leg_5_coxa, leg_5_femur, leg_5_tibia, leg_6_coxa, leg_6_femur, leg_6_tibia]
+    command_interfaces: [effort]
+    state_interfaces: [position, velocity]
+    gains:
+      leg_1_coxa: {p: 12.0, d: 0.1}
+      leg_1_femur: {p: 12.0, d: 0.1}
+      leg_1_tibia: {p: 12.0, d: 0.1}
+      leg_2_coxa: {p: 12.0, d: 0.1}
+      leg_2_femur: {p: 12.0, d: 0.1}
+      leg_2_tibia: {p: 12.0, d: 0.1}
+      leg_3_coxa: {p: 12.0, d: 0.1}
+      leg_3_femur: {p: 12.0, d: 0.1}
+      leg_3_tibia: {p: 12.0, d: 0.1}
+      leg_4_coxa: {p: 12.0, d: 0.1}
+      leg_4_femur: {p: 12.0, d: 0.1}
+      leg_4_tibia: {p: 12.0, d: 0.1}
+      leg_5_coxa: {p: 12.0, d: 0.1}
+      leg_5_femur: {p: 12.0, d: 0.1}
+      leg_5_tibia: {p: 12.0, d: 0.1}
+      leg_6_coxa: {p: 12.0, d: 0.1}
+      leg_6_femur: {p: 12.0, d: 0.1}
+      leg_6_tibia: {p: 12.0, d: 0.1}

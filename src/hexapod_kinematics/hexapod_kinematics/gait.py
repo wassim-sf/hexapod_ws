@@ -49,6 +49,7 @@ class GaitParams:
     step_height: float = DEFAULT_STEP_HEIGHT    # swing foot clearance, metres
     cycle_period: float | None = None           # seconds. None uses the gait's default
     duty_factor: float | None = None            # fraction of a cycle in stance. None uses the gait's default
+    body_offset: float = 0.0                    # body height relative to the stance pose, metres
 
     def __post_init__(self):
         if self.gait not in PHASES:
@@ -126,6 +127,7 @@ class GaitGenerator:
         self.model = model
         self.params = params or GaitParams()
         self.home_world, self.height = nominal_stance(model, stance)
+        self.height += self.params.body_offset
         self.home = self.home_world + np.array([0.0, 0.0, -self.height])
         offsets = PHASES[self.params.gait]
         self.offsets = np.array([offsets[leg.name] for leg in model.legs])

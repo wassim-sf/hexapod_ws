@@ -6,6 +6,7 @@
 <robot name="hexapod" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <xacro:property name="p" value="${xacro.load_yaml('$(find hexapod_description)/config/robot_parameters.yaml')}"/>
+  <xacro:property name="servo_dyn" value="${xacro.load_yaml('$(find hexapod_description)/config/servo_model.yaml')['servo_model']}"/>
   <xacro:property name="mesh_dir" value="package://hexapod_description/meshes/${p['visual']['mesh_subdir']}"/>
 
   <material name="body_red"><color rgba="0.79 0.42 0.42 1"/></material>
@@ -66,6 +67,7 @@
       <origin xyz="${xyz}" rpy="0 0 0"/>
       <axis xyz="${cfg['axis'][0]} ${cfg['axis'][1]} ${cfg['axis'][2]}"/>
       <limit lower="${cfg['lower']}" upper="${cfg['upper']}" effort="${cfg['effort']}" velocity="${cfg['velocity']}"/>
+      <dynamics damping="${servo_dyn['joint_damping']}" friction="${servo_dyn['joint_friction']}"/>
     </joint>
   </xacro:macro>
 
@@ -84,6 +86,7 @@
       <axis xyz="${p['joints']['coxa']['axis'][0]} ${p['joints']['coxa']['axis'][1]} ${p['joints']['coxa']['axis'][2]}"/>
       <limit lower="${p['joints']['coxa']['lower']}" upper="${p['joints']['coxa']['upper']}"
              effort="${p['joints']['coxa']['effort']}" velocity="${p['joints']['coxa']['velocity']}"/>
+      <dynamics damping="${servo_dyn['joint_damping']}" friction="${servo_dyn['joint_friction']}"/>
     </joint>
 
     <link name="leg_${id}_coxa_link">
@@ -156,11 +159,14 @@
         <update_rate>${p['foot_contact']['update_rate_hz']}</update_rate>
         <contact>
           <collision>leg_${id}_foot_link_collision</collision>
-          <topic>foot_contact/leg_${id}</topic>
+          <topic>foot_contact_raw/leg_${id}</topic>
         </contact>
       </sensor>
     </gazebo>
   </xacro:macro>
+
+  <xacro:arg name="sim" default="false"/>
+  <xacro:arg name="controllers_file" default=""/>
 
   <xacro:leg id="1"/>
   <xacro:leg id="2"/>
@@ -168,4 +174,8 @@
   <xacro:leg id="4"/>
   <xacro:leg id="5"/>
   <xacro:leg id="6"/>
+
+  <xacro:if value="$(arg sim)">
+    <xacro:include filename="$(find hexapod_description)/urdf/hexapod_sim.xacro"/>
+  </xacro:if>
 </robot>

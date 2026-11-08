@@ -1,0 +1,36 @@
+cmake_minimum_required(VERSION 3.8)
+project(hexapod_gazebo)
+
+find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
+find_package(controller_interface REQUIRED)
+find_package(hardware_interface REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(realtime_tools REQUIRED)
+find_package(std_msgs REQUIRED)
+
+add_library(servo_model_controller SHARED src/servo_model_controller.cpp)
+target_compile_features(servo_model_controller PUBLIC cxx_std_17)
+target_include_directories(servo_model_controller PUBLIC include)
+ament_target_dependencies(servo_model_controller controller_interface hardware_interface pluginlib rclcpp rclcpp_lifecycle realtime_tools std_msgs)
+pluginlib_export_plugin_description_file(controller_interface servo_model_controller.xml)
+
+install(TARGETS servo_model_controller LIBRARY DESTINATION lib)
+install(DIRECTORY config launch worlds DESTINATION share/${PROJECT_NAME})
+ament_python_install_package(${PROJECT_NAME})
+install(PROGRAMS scripts/foot_switch_sim.py scripts/metrics_logger.py scripts/measure_servo_step.py DESTINATION lib/${PROJECT_NAME})
+
+
+if(BUILD_TESTING)
+  find_package(launch_testing_ament_cmake REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+  add_launch_test(test/test_walking.launch.py TIMEOUT 600)
+  ament_add_gtest(test_servo_model test/test_servo_model.cpp)
+  target_include_directories(test_servo_model PRIVATE include)
+  ament_add_pytest_test(test_foot_switch test/test_foot_switch.py)
+endif()
+
+ament_package()
