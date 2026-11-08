@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hexapod-kinematics"
+version = "0.1.0"
+description = "Pure-Python kinematics, gaits and stability for the 18-DOF RookiDroid Mochi hexapod"
+requires-python = ">=3.10"
+dependencies = ["numpy", "pyyaml"]
+license = { text = "GPL-3.0-only" }
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["hexapod_kinematics"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

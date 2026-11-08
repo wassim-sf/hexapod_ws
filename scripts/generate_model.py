@@ -179,6 +179,7 @@ EFFORT = round(3.5 * 9.80665 / 100.0, 4)       # 3.5 kgf.cm at 6.0 V, datasheet
 VELOCITY = round(float(np.radians(60.0)) / 0.08, 3)   # 0.08 s/60 deg at 6.0 V, no load, datasheet
 limit = lambda lo, hi: {'lower': round(float(np.radians(lo)), 6), 'upper': round(float(np.radians(hi)), 6),
                         'lower_deg': lo, 'upper_deg': hi, 'effort': EFFORT, 'velocity': VELOCITY}
+TIBIA_UPPER_RADIUS = 0.025  # from calibrate_leg_collision.py
 sections = [
     ('Identity. RookiDroid "Mochi" variant: the MG92B build in the repo. SI units, radians.',
      {'robot': {'name': 'hexapod', 'variant': 'rookidroid_mochi', 'source_commit': '625d150e0d0315bf6a364b36b8aa8332ec558935'}}),
@@ -222,6 +223,9 @@ sections = [
                    'ground_upper': box_spec(-2, 2, cad.TIP_Y - 19.75, cad.TIP_Y + 19.75, -60, -20),
                    'ground_lower': box_spec(-2, 2, cad.TIP_Y - 8, cad.TIP_Y + 8, -76.46, -60)},
          'foot': {'radius': 0.006, 'length': 0.009, 'z': 0.006}}}),
+    ('DERIVED. Capsules for the neighbouring-leg check in hexapod_kinematics, fitted to mesh contact by\n'
+     '# scripts/calibrate_leg_collision.py. Metres. Each capsule lies on the leg plane; tibia_split is where the foot plates end.',
+     {'leg_collision': {'femur_radius': 0.012, 'tibia_upper_radius': TIBIA_UPPER_RADIUS, 'tibia_lower_radius': 0.006, 'tibia_split': 0.060}}),
     ('PLACEHOLDER: the Mochi parts list has no IMU. Position assumed at the body centre, mid-hub.',
      {'imu': {'xyz': [0.0, 0.0, round(cad.ARM_HEIGHT / 2 * mm, 5)], 'status': 'placeholder'}}),
 ]

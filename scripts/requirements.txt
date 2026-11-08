@@ -3,6 +3,8 @@ lxml
 matplotlib
 networkx
 numpy
+playwright
+pytest
 python-fcl
 pyyaml
 rtree

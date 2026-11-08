@@ -101,7 +101,7 @@ Measured limits come from [`sweep_limits.py`](../scripts/sweep_limits.py), a 1°
 
 **Limits that depend on other joints** (a URDF can't express these, so simulation or the controller must handle them):
 
-- Neighbouring legs touch when each swings about 39–41° toward the other, inside the coxa limit.
+- Neighbouring legs touch when each swings about 39–43° toward the other, inside the coxa limit. The rear pair (legs 3 and 6) is the tightest. Step 1 tested only one pair; [`calibrate_leg_collision.py`](../scripts/calibrate_leg_collision.py) tests all pair types.
 - At femur −75°, the tibia reaches the body after only −26°.
 
 **Poses**, converted from `mochi.json` (PUBLISHED):
@@ -111,6 +111,10 @@ Measured limits come from [`sweep_limits.py`](../scripts/sweep_limits.py), a 1°
 | neutral | 0° | 0° | 0° | 79.6 mm out, 83.5 mm down |
 | standby | 0° | +30° | −15° | 95.4 mm out, 58.8 mm down |
 | laydown | 0° | +65° | 0° | 130.1 mm out, 4.2 mm up |
+
+## Leg collision capsules (DERIVED)
+
+`leg_collision` in the YAML holds the capsule radii used by the runtime check. Femur 12 mm and lower tibia 6 mm come from the parts. Upper tibia 25 mm is fitted to mesh contact. How it was fitted, and its accuracy, are in [`kinematics.md`](kinematics.md#leg-to-leg-collision-check).
 
 ## Masses (all ESTIMATED)
 

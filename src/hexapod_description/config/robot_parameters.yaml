@@ -123,6 +123,10 @@ collision:
       xyz: [0.0, -0.00102, -0.06823]
   foot: {radius: 0.006, length: 0.009, z: 0.006}
 
+# DERIVED. Capsules for the neighbouring-leg check in hexapod_kinematics, fitted to mesh contact by
+# scripts/calibrate_leg_collision.py. Metres. Each capsule lies on the leg plane; tibia_split is where the foot plates end.
+leg_collision: {femur_radius: 0.012, tibia_upper_radius: 0.025, tibia_lower_radius: 0.006, tibia_split: 0.06}
+
 # PLACEHOLDER: the Mochi parts list has no IMU. Position assumed at the body centre, mid-hub.
 imu:
   xyz: [0.0, 0.0, 0.0144]
