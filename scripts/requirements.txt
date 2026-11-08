@@ -1,0 +1,11 @@
+fast-simplification
+lxml
+matplotlib
+networkx
+numpy
+python-fcl
+pyyaml
+rtree
+scipy
+shapely
+trimesh

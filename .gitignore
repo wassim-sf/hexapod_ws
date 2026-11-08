@@ -1,0 +1,8 @@
+build/
+install/
+log/
+refs/*
+!refs/COLCON_IGNORE
+.venv/
+__pycache__/
+*.pyc
