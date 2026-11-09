@@ -70,6 +70,41 @@ def test_velocity_ramps_and_is_capped(model):
     assert out.command.vx == pytest.approx(c.gait.max_speed(), rel=1e-3)
 
 
+@pytest.mark.parametrize('gait', ['tripod', 'ripple', 'wave'])
+@pytest.mark.parametrize('idle', [0.0, 0.3, 0.77, 1.1, 1.45])
+def test_published_targets_never_outrun_the_servo(model, gait, idle):
+    """From lying down, through standing and walking, back to lying down, at the tuned parameters."""
+    c = Controller(model, Config(gait=gait))
+    limit = model.velocity.max() * c.dt
+    previous = c.q.copy()
+
+    def advance(seconds, command=None):
+        nonlocal previous
+        for _ in range(int(seconds * c.config.rate)):
+            if command is not None:
+                c.set_velocity(command)
+            out = c.step()
+            assert np.abs(out.q - previous).max() <= limit
+            previous = out.q.copy()
+
+    c.request_stand()
+    advance(c.config.stand_duration + idle)
+    advance(6.0, VelocityCommand(0.05))
+    advance(0.5 + 8.0)
+    assert c.state == State.STAND
+    c.request_sit()
+    advance(c.config.sit_duration + 0.1)
+    assert c.state == State.LAYDOWN
+
+
+def test_published_order_is_the_documented_joint_order(model):
+    """/joint_commands is q.ravel(): leg 1 coxa, femur, tibia, then leg 2, up to leg 6. Every consumer relies on this."""
+    assert [leg.id for leg in model.legs] == [1, 2, 3, 4, 5, 6]
+    assert model.joints.keys() >= {'coxa', 'femur', 'tibia'}
+    from hexapod_kinematics import JOINT_ORDER
+    assert JOINT_ORDER == ('coxa', 'femur', 'tibia')
+
+
 def test_stale_command_stops_walking(model):
     c = standing(model)
     run(c, 1.0, VelocityCommand(0.03))
@@ -136,6 +171,19 @@ def test_default_gait_walks_without_violations(model):
     total = c.safety.total
     run(c, 30.0, VelocityCommand(0.05))
     assert c.safety.total == total
+
+
+@pytest.mark.parametrize('command', [VelocityCommand(1.0), VelocityCommand(0.0, 1.0), VelocityCommand(0.0, -1.0), VelocityCommand(1.0, 1.0, 3.0)], ids=['forward', 'left', 'right', 'diagonal'])
+@pytest.mark.parametrize('idle', [0.37, 1.23])
+def test_tuned_gait_is_clean_from_any_start(model, command, idle):
+    """The first swing starts from home, not the rear of the stride, so it is the closest to the femur limit. It depends on the start phase."""
+    c = standing(model)
+    run(c, idle)
+    total = c.safety.total
+    run(c, 6.0, command)
+    run(c, 4.0)
+    assert c.safety.total == total
+    assert not c.fault
 
 
 @pytest.mark.parametrize('gait', ['ripple', 'wave'])

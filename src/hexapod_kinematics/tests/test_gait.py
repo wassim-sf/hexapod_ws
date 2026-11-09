@@ -123,6 +123,20 @@ def test_starts_from_standing_without_a_jump(model):
         previous = sample.q
 
 
+@pytest.mark.parametrize('gait', GAITS)
+@pytest.mark.parametrize('idle_ticks', range(0, 120, 7))
+def test_walking_starts_smoothly_after_any_idle_time(model, gait, idle_ticks):
+    dt = 0.02
+    generator = GaitGenerator(model, GaitParams(gait=gait))
+    for _ in range(idle_ticks):
+        generator.update(dt, VelocityCommand(), checks=False)
+    previous = generator.sample().q
+    for _ in range(100):
+        q = generator.update(dt, VelocityCommand(0.015), checks=False).q
+        assert np.abs(q - previous).max() / dt < model.velocity.max() / 2
+        previous = q
+
+
 def test_command_changes_stay_valid(model):
     generator = GaitGenerator(model)
     rng = np.random.default_rng(8)

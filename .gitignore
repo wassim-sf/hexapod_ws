@@ -9,6 +9,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv-cad/
+runs/
 
 # Personal-use models, never to be committed, with anything derived from them:
 # - The Robot Lk zip (comparison only), and MakerWorld 1973965 if it is ever added.

@@ -20,7 +20,7 @@ pluginlib_export_plugin_description_file(controller_interface servo_model_contro
 install(TARGETS servo_model_controller LIBRARY DESTINATION lib)
 install(DIRECTORY config launch worlds DESTINATION share/${PROJECT_NAME})
 ament_python_install_package(${PROJECT_NAME})
-install(PROGRAMS scripts/foot_switch_sim.py scripts/metrics_logger.py scripts/measure_servo_step.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/foot_switch_sim.py scripts/metrics_logger.py scripts/measure_servo_step.py scripts/run_scenario.py scripts/record_gif.py DESTINATION lib/${PROJECT_NAME})
 
 
 if(BUILD_TESTING)

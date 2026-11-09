@@ -1,4 +1,5 @@
 // The single command path: std_msgs/Float64MultiArray with 18 joint targets on /joint_commands.
+#include <atomic>
 #include <cmath>
 #include <deque>
 #include <memory>
@@ -11,6 +12,7 @@
 #include "pluginlib/class_list_macros.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "realtime_tools/realtime_publisher.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 
 namespace hexapod_gazebo
@@ -66,6 +68,9 @@ public:
     subscription_ = get_node()->create_subscription<Array>(
       get_node()->get_parameter("command_topic").as_string(), rclcpp::SystemDefaultsQoS(),
       [this](const Array::SharedPtr msg) {
+        if (!active_) {
+          return;  // Not driving the joints, for example while the debug trajectory controller is. Nothing to queue.
+        }
         if (msg->data.size() != joints_.size()) {
           RCLCPP_ERROR_THROTTLE(
             get_node()->get_logger(), *get_node()->get_clock(), 2000,
@@ -82,6 +87,7 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         queue_.push_back({get_node()->now().seconds(), msg->data});
       });
+    ready_publisher_ = get_node()->create_publisher<std_msgs::msg::Bool>("/servo_ready", rclcpp::QoS(1).transient_local());
     effort_publisher_ = get_node()->create_publisher<Array>("/servo_model/efforts", rclcpp::SystemDefaultsQoS());
     effort_rt_ = std::make_unique<realtime_tools::RealtimePublisher<Array>>(effort_publisher_);
     effort_rt_->msg_.data.assign(joints_.size(), 0.0);
@@ -97,13 +103,19 @@ public:
       targets_[i] = state_interfaces_[2 * i].get_optional().value_or(0.0);
       filtered_[i] = targets_[i];
     }
-    std::lock_guard<std::mutex> lock(mutex_);
-    queue_.clear();
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      queue_.clear();
+    }
+    active_ = true;
+    publish_ready(true);
     return CallbackReturn::SUCCESS;
   }
 
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) override
   {
+    active_ = false;
+    publish_ready(false);
     for (auto & command : command_interfaces_) {
       (void)command.set_value(0.0);
     }
@@ -146,6 +158,14 @@ public:
   }
 
 private:
+  // Latched, so that a late subscriber still learns whether commands are being obeyed.
+  void publish_ready(bool ready)
+  {
+    std_msgs::msg::Bool msg;
+    msg.data = ready;
+    ready_publisher_->publish(msg);
+  }
+
   struct Timed
   {
     double stamp;
@@ -168,9 +188,11 @@ private:
   ServoParams params_;
   double delay_{0.0};
   int publish_count_{0};
+  std::atomic<bool> active_{false};
   std::mutex mutex_;
   std::deque<Timed> queue_;
   rclcpp::Subscription<Array>::SharedPtr subscription_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr ready_publisher_;
   rclcpp::Publisher<Array>::SharedPtr effort_publisher_;
   std::unique_ptr<realtime_tools::RealtimePublisher<Array>> effort_rt_;
 };

@@ -1,0 +1,16 @@
+# Gait tuning: one parameter at a time around the baseline. Run with run_scenario.py --sweep.
+- {name: baseline, vx: 0.05, set: {}}
+- {name: period_1.2, vx: 0.05, set: {tripod_cycle_period: 1.2}}
+- {name: period_1.4, vx: 0.05, set: {tripod_cycle_period: 1.4}}
+- {name: period_1.8, vx: 0.05, set: {tripod_cycle_period: 1.8}}
+- {name: height_0.015, vx: 0.05, set: {step_height: 0.015}}
+- {name: height_0.030, vx: 0.05, set: {step_height: 0.030}}
+- {name: height_0.040, vx: 0.05, set: {step_height: 0.040}}
+- {name: body_-0.015, vx: 0.05, set: {body_offset: -0.015}}
+- {name: body_+0.015, vx: 0.05, set: {body_offset: 0.015}}
+- {name: body_+0.030, vx: 0.05, set: {body_offset: 0.030}}
+- {name: duty_0.60, vx: 0.05, set: {tripod_duty_factor: 0.60}}
+- {name: length_0.040_at_cap, vx: 0.0455, set: {step_length: 0.040}}
+- {name: length_0.050_at_cap, vx: 0.0568, set: {step_length: 0.050}}
+- {name: length_0.070_at_cap, vx: 0.0795, set: {step_length: 0.070}}
+- {name: length_0.090_at_cap, vx: 0.1023, set: {step_length: 0.090}}

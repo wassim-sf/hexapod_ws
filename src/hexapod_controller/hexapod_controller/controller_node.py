@@ -2,7 +2,8 @@
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
-from std_msgs.msg import Float64MultiArray, String
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool, Float64MultiArray, String
 from std_srvs.srv import Trigger
 
 from hexapod_controller.core import Config, Controller, State
@@ -26,9 +27,18 @@ class ControllerNode(Node):
         self.create_service(Trigger, '/hexapod/stand', self.on_stand)
         self.create_service(Trigger, '/hexapod/sit', self.on_sit)
         self.create_service(Trigger, '/hexapod/clear_fault', self.on_clear)
+        self.servos_ready = False
+        # Latched by whatever executes /joint_commands. A subscriber alone is not enough: the servo controller
+        # subscribes when configured, and ignores commands until it is activated.
+        self.create_subscription(Bool, '/servo_ready', self.on_servo_ready, QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.last_state = None
         self.create_timer(self.core.dt, self.tick)
         self.get_logger().info(f'{self.core.params.gait} gait, up to {self.core.gait.max_speed() * 1000:.0f} mm/s')
+
+    def on_servo_ready(self, msg):
+        if self.servos_ready and not msg.data:
+            self.get_logger().warn('servos stopped obeying /joint_commands')
+        self.servos_ready = msg.data
 
     def on_cmd_vel(self, msg):
         self.core.set_velocity(VelocityCommand(msg.linear.x, msg.linear.y, msg.angular.z))
@@ -50,7 +60,7 @@ class ControllerNode(Node):
         return response
 
     def tick(self):
-        if self.core.state == State.LAYDOWN and self.autostart and self.command_pub.get_subscription_count() > 0:
+        if self.core.state == State.LAYDOWN and self.autostart and self.servos_ready:
             self.autostart = False
             self.core.request_stand()
         out = self.core.step()

@@ -20,8 +20,9 @@ from geometry_msgs.msg import Twist
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from nav_msgs.msg import Odometry
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 from std_msgs.msg import Bool, Float64MultiArray, String
+from std_srvs.srv import Trigger
 
 
 RUNS = os.environ.get('HEXAPOD_RUNS', tempfile.mkdtemp(prefix='hexapod_runs_'))
@@ -46,6 +47,7 @@ class TestWalking(unittest.TestCase):
         cls.exec.add_node(cls.node)
         cls.odom = None
         cls.state = ''
+        cls.ready_at = None
         cls.violations = []
         cls.commands = []
         cls.feet = {i: False for i in range(1, 7)}
@@ -53,6 +55,7 @@ class TestWalking(unittest.TestCase):
         n = cls.node
         n.create_subscription(Odometry, '/ground_truth/odom', cls.on_odom, qos_profile_sensor_data)
         n.create_subscription(String, '/controller_state', lambda m: setattr(cls, 'state', m.data), 10)
+        n.create_subscription(Bool, '/servo_ready', cls.on_ready, QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         n.create_subscription(String, '/controller_safety', lambda m: cls.violations.append(m.data), 10)
         n.create_subscription(Float64MultiArray, '/joint_commands', lambda m: cls.commands.append((n.get_clock().now().nanoseconds * 1e-9, len(m.data))), 10)
         for i in range(1, 7):
@@ -70,6 +73,11 @@ class TestWalking(unittest.TestCase):
             pathlib.Path(path).write_text('\n'.join(cls.report) + '\n')
         cls.node.destroy_node()
         rclpy.shutdown()
+
+    @classmethod
+    def on_ready(cls, msg):
+        if msg.data and cls.ready_at is None:
+            cls.ready_at = cls.now()
 
     @classmethod
     def on_odom(cls, msg):
@@ -128,10 +136,13 @@ class TestWalking(unittest.TestCase):
         cls.sim_start, cls.wall_start = self.now(), time.monotonic()
         while self.state != 'stand':
             self.exec.spin_once(timeout_sec=0.01)
-            self.assertLess(self.now() - cls.sim_start, 5.0, f'still {self.state!r} after 5 s of simulation')
+            self.assertLess(self.now(), 5.0, f'still {self.state!r} at sim t=5 s')
+        reached = self.now()
+        z_at_stand = self.position()[2]
+        self.assertGreater(z_at_stand, 0.07, 'the state says stand, but the body has not risen')
         self.spin(0.5)
         z = self.position()[2]
-        cls.report.append(f'stand: reached in {self.now() - cls.sim_start - 0.5:.2f} s of sim, body height {z * 1000:.1f} mm, wall {time.monotonic() - wall:.1f} s from launch')
+        cls.report.append(f'stand: reached at sim t={reached:.2f} s (servos ready at t={cls.ready_at:.2f} s), body height {z * 1000:.1f} mm, wall {time.monotonic() - wall:.1f} s from launch')
         self.assertGreater(z, 0.07)
         self.assertTrue(all(self.feet.values()), f'feet {self.feet}')
 
@@ -195,6 +206,24 @@ class TestWalking(unittest.TestCase):
         subs = [i.node_name for i in self.node.get_subscriptions_info_by_topic('/ground_truth/odom')]
         self.assertNotIn('hexapod_controller', subs)
         self.assertNotIn('servo_model_controller', subs)
+
+    @unittest.skip('not verified yet, see docs/TODO.md')
+    def test_7_sits_down(self):
+        cls = type(self)
+        client = self.node.create_client(Trigger, '/hexapod/sit')
+        self.assertTrue(client.wait_for_service(timeout_sec=10.0))
+        future = client.call_async(Trigger.Request())
+        self.exec.spin_until_future_complete(future, timeout_sec=10.0)
+        self.assertTrue(future.result().success)
+        t0 = self.now()
+        while self.state != 'laydown':
+            cls.spin(0.1)
+            self.assertLess(self.now() - t0, 20.0, f'still {self.state!r}')
+        cls.spin(1.0)
+        z = self.position()[2]
+        cls.report.append(f'sit down: laydown after {self.now() - t0:.1f} s, body height {z * 1000:.1f} mm')
+        self.assertLess(z, 0.05)
+        self.assertLess(max(self.tilt()), math.radians(5))
 
 
 @launch_testing.post_shutdown_test()

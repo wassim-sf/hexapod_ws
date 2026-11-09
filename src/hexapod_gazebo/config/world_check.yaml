@@ -1,0 +1,7 @@
+# Does each world load, and how does the untuned flat-ground gait do there? A baseline for step 5, not a tuning target.
+- {name: slope_10, world: slope_10, vx: 0.05}
+- {name: rough, world: rough, vx: 0.05}
+- {name: step_2cm, world: step_2cm, vx: 0.05}
+- {name: low_friction, world: low_friction, vx: 0.05}
+- {name: ripple_flat, gait: ripple, vx: 0.025}
+- {name: wave_flat, gait: wave, vx: 0.012}

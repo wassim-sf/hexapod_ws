@@ -196,6 +196,7 @@ class GaitGenerator:
         """Advance by dt and return the new sample. checks=False skips collision and stability for speed."""
         cmd, saturated = self.limit_command(command)
         self.t += dt
+        previous_phase = [self._phase(i) for i in range(len(self.model.legs))]
         self.cycles += dt / self.params.cycle_period
         dx, dy, theta = _displacement(cmd, dt)
         c, s = np.cos(self.yaw), np.sin(self.yaw)
@@ -207,8 +208,11 @@ class GaitGenerator:
             phase = self._phase(i)
             wants_swing = phase >= duty
             if wants_swing and not self.swinging[i]:
+                # A swing starts only as the phase enters the swing window. Starting later would put the foot mid-air at once,
+                # which is what happens otherwise when walking starts from idle. Such a foot stays down until its next window.
+                entering = previous_phase[i] < duty or previous_phase[i] > phase
                 # Idle feet already at home stay down instead of stepping on the spot.
-                if not (cmd.is_zero and np.linalg.norm(self.feet[i] - self.home[i]) < 1e-3):
+                if entering and not (cmd.is_zero and np.linalg.norm(self.feet[i] - self.home[i]) < 1e-3):
                     self.swinging[i] = True
                     self.lift[i] = self.feet[i].copy()
             elif not wants_swing and self.swinging[i]:

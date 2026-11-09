@@ -78,6 +78,47 @@ To export a gait from the command line:
 
 The CSV has time, 18 joint angles, world-frame foot positions, foot contacts, body pose and stability margin, in SI units and radians.
 
+## Gazebo simulation
+
+![The hexapod walking in Gazebo with the tripod gait](docs/images/walk.gif)
+
+The robot walks in Gazebo Harmonic through one command path: `/joint_commands` -> servo model controller -> joint efforts. The classical controller in `hexapod_controller` reads no ground truth. Its gait parameters are in [`controller.yaml`](src/hexapod_controller/config/controller.yaml).
+
+```bash
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+
+ros2 launch hexapod_controller walk.launch.py                # add gui:=false for headless
+ros2 launch hexapod_controller teleop.launch.py              # in another terminal, or joystick:=true for a gamepad
+```
+
+To measure a run or record a GIF:
+
+```bash
+ros2 run hexapod_gazebo run_scenario.py --vx 0.05 --seconds 30 --set step_height=0.03    # prints a metrics table, writes runs/
+ros2 launch hexapod_controller walk.launch.py gui:=false camera:=true                    # then, in another terminal:
+ros2 run hexapod_gazebo record_gif.py walk.gif
+```
+
+The launch test stands the robot up, walks 1 m, turns 90 degrees, then walks for 60 s:
+
+```bash
+launch_test src/hexapod_gazebo/test/test_walking.launch.py
+```
+
+Result on the flat world with the tripod gait at the default parameters:
+
+| Check | Result |
+|---|---|
+| Stand | Reached at sim t=4.45 s, body height 80.7 mm |
+| Walk 1 m at 0.05 m/s | True speed 0.0460 m/s (8.0% low), lateral drift -2.7 mm |
+| Turn, 90 degrees commanded | 87.4 degrees |
+| 60 s walk | No fall, 0 violations, at least 3 foot switches pressed, real-time factor 0.99 |
+| `/joint_commands` | 50.0 Hz, 18 values |
+
+Not verified yet: see [`docs/TODO.md`](docs/TODO.md).
+
 ## Tests
 
 ```bash
@@ -87,6 +128,12 @@ The CSV has time, 18 joint angles, world-frame foot positions, foot contacts, bo
 # Operate the real UI in headless Chrome and refresh docs/images (needs Google Chrome):
 .venv/bin/pip install playwright
 .venv/bin/python scripts/capture_sim_screenshots.py
+```
+
+Run these in a shell without ROS sourced. Under ROS, the C++ and foot switch tests run with `ctest -E test_walking` in `build/hexapod_gazebo`, and the controller tests with:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/hexapod_kinematics:$PYTHONPATH python3 -m pytest src/hexapod_controller/test/test_core.py
 ```
 
 `colcon` does not build `hexapod_kinematics` or `hexapod_sim`, because they are plain Python packages. Under ROS, make the library importable with `export PYTHONPATH=$HOME/hexapod_ws/src/hexapod_kinematics:$PYTHONPATH`.
